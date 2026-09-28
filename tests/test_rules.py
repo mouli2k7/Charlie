@@ -121,6 +121,11 @@ from charlie.brain.rules import parse_rules
         ("previous track", "media_control", {"command": "previous"}),
         ("play previous song", "media_control", {"command": "previous"}),
 
+        # --- Time & Date (Instant Offline Answer) ---
+        ("what is the time", "answer", None),
+        ("what time is it", "answer", None),
+        ("what is today date", "answer", None),
+
         # --- Unknown Phrases ---
         ("tell me a joke", "unknown", None),
         ("what is the weather today", "unknown", None),

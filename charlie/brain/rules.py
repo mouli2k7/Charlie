@@ -329,6 +329,41 @@ def parse_apps(text: str) -> Optional[Action]:
     return None
 
 
+def parse_time_and_date(text: str) -> Optional[Action]:
+    """Parse time and date inquiries for instant, offline assistant responses."""
+    from datetime import datetime
+
+    time_patterns = [
+        r"^(?:what\s+(?:is\s+)?the\s+time|what\s+time\s+is\s+it|tell\s+me\s+the\s+time|current\s+time|time\s+now|what'?s\s+the\s+time)$",
+        r"^(?:what\s+time\s+is\s+it\s+now|do\s+you\s+have\s+the\s+time)$",
+    ]
+    for pat in time_patterns:
+        if re.search(pat, text, re.IGNORECASE):
+            now = datetime.now()
+            time_str = now.strftime("%I:%M %p").lstrip("0")
+            return Action(
+                action="answer",
+                params={"text": f"It is {time_str}."},
+                confidence=1.0,
+            )
+
+    date_patterns = [
+        r"^(?:what\s+(?:is\s+)?(?:today'?s?\s+)?date|what\s+date\s+is\s+it|what'?s\s+the\s+date|today'?s?\s+date)$",
+        r"^(?:what\s+day\s+is\s+(?:it|today)|what'?s\s+today)$",
+    ]
+    for pat in date_patterns:
+        if re.search(pat, text, re.IGNORECASE):
+            now = datetime.now()
+            date_str = now.strftime("%A, %B %d, %Y")
+            return Action(
+                action="answer",
+                params={"text": f"Today is {date_str}."},
+                confidence=1.0,
+            )
+
+    return None
+
+
 def parse_rules(text: str) -> Action:
     """Evaluate text through rule-based parser and return a validated Action."""
     if not text or not text.strip():
@@ -337,6 +372,11 @@ def parse_rules(text: str) -> Action:
     cleaned = clean_input(text)
     if not cleaned:
         return make_unknown("No command detected.")
+
+    # 0. Time & Date (Instant offline answer)
+    action = parse_time_and_date(cleaned)
+    if action:
+        return validate_action(action)
 
     # 1. Volume & Mute
     action = parse_volume(cleaned)

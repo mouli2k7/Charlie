@@ -24,6 +24,13 @@ def test_dispatch_close_app(mock_close):
     mock_close.assert_called_once_with("Chrome")
 
 
+def test_dispatch_answer():
+    action = Action(action="answer", params={"text": "It is 12:00 PM."})
+    success, msg = dispatch(action)
+    assert success is True
+    assert msg == "It is 12:00 PM."
+
+
 @patch("charlie.actions.web.web_search")
 def test_dispatch_web_search(mock_search):
     mock_search.return_value = (True, "Searching Amazon.")

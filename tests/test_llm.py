@@ -107,8 +107,13 @@ class TestLLMLiveGemini(unittest.TestCase):
         self.assertEqual(action.action, "brightness_change")
         self.assertEqual(action.params.get("direction"), "down")
 
+    def test_live_assistant_question(self) -> None:
+        action = parse_llm("what is the cost of iPhone 16")
+        self.assertEqual(action.action, "answer")
+        self.assertTrue(len(action.params.get("text", "")) > 0)
+
     def test_live_unknown_command(self) -> None:
-        action = parse_llm("what is the weather like on Pluto")
+        action = parse_llm("asdfghjklqwerty12345!@#$%^")
         self.assertEqual(action.action, "unknown")
 
 

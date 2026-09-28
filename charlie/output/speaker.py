@@ -89,7 +89,7 @@ def output_response(
     elif "speak" in kwargs:
         speak_it = kwargs["speak"]
 
-    if action_name and action_name != "unknown":
+    if action_name and action_name not in ("unknown", "answer"):
         print(f"[{action_name}] {message}")
     else:
         print(f"Charlie: {message}")
