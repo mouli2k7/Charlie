@@ -1,8 +1,8 @@
-"""Voice input handler for Charlie — Phase 2.
+"""Voice input handler for Charlie.
 
 Implements push-to-talk listening using the MacBook Pro built-in microphone,
-Google Speech Recognition for transcription, and graceful error handling
-for mic issues, background noise, and network failures.
+Google Speech Recognition with multi-language fallback (en-US / en-IN),
+and sensitive microphone energy thresholds.
 
 Apple Silicon fix: patches speech_recognition to use the native ARM64 flac
 binary from Homebrew instead of the bundled Intel-only flac-mac binary.
@@ -27,6 +27,7 @@ _HOMEBREW_FLAC_PATHS = [
     "/usr/local/bin/flac",        # Intel Homebrew (fallback)
 ]
 
+
 def _patch_flac() -> None:
     """Patch speech_recognition's flac converter to use the native ARM64 binary."""
     native_flac = next(
@@ -34,14 +35,6 @@ def _patch_flac() -> None:
         None,
     )
     if native_flac:
-        # Monkey-patch the module-level converter path used internally by AudioData
-        try:
-            import speech_recognition as _sr
-            # Patch the flac_converter path the library resolves at runtime
-            _sr.AudioData.get_flac_data.__globals__  # ensure accessible
-        except Exception:
-            pass
-        # Override via shutil so `shutil.which("flac")` returns our binary
         _original_which = shutil.which
 
         def _patched_which(name: str, *args, **kwargs) -> Optional[str]:
@@ -51,21 +44,27 @@ def _patch_flac() -> None:
 
         shutil.which = _patched_which  # type: ignore[assignment]
 
+
 _patch_flac()
 # -------------------------------------------------------------------------
 
 
-# SpeechRecognition recognizer instance (shared, not re-created per listen)
+# SpeechRecognition recognizer instance
 _recognizer = sr.Recognizer()
-_recognizer.pause_threshold = 0.8      # seconds of silence = end of speech
+_recognizer.energy_threshold = 150       # Sensitive default for MacBook built-in mic
+_recognizer.dynamic_energy_threshold = True
+_recognizer.dynamic_energy_adjustment_damping = 0.15
+_recognizer.dynamic_energy_ratio = 1.5
+_recognizer.pause_threshold = 0.8        # seconds of silence to confirm end of speech
+_recognizer.phrase_threshold = 0.2       # minimum seconds of speech before considering started
 _recognizer.non_speaking_duration = 0.4
 
 # Prefer the built-in MacBook Pro Microphone
 PREFERRED_MIC_NAME = "MacBook Pro Microphone"
 
-# Filler prefixes to strip from the beginning of a transcription
+# Filler prefixes and phonetic variants to strip from the beginning of transcription
 STRIP_PREFIXES = re.compile(
-    r"^(?:hey\s+charlie|ok\s+charlie|charlie)[,\s:]*",
+    r"^(?:hey|hi|hello|ok|okay|a)?\s*(?:charlie|charley|charly|sharlie)[,:\s-]*",
     re.IGNORECASE,
 )
 
@@ -87,6 +86,30 @@ def _strip_wake_prefix(text: str) -> str:
     return STRIP_PREFIXES.sub("", text).strip()
 
 
+def _transcribe_audio(audio: sr.AudioData) -> Optional[str]:
+    """Transcribe audio with multi-language fallback (e.g. en-US then en-IN)."""
+    cfg = get_config()
+    primary_lang = cfg.speech_language
+    fallback_lang = "en-IN" if primary_lang != "en-IN" else "en-US"
+
+    languages = [primary_lang, fallback_lang]
+
+    for lang in languages:
+        try:
+            raw_text = _recognizer.recognize_google(audio, language=lang)
+            if raw_text and raw_text.strip():
+                return raw_text.strip()
+        except sr.UnknownValueError:
+            continue
+        except sr.RequestError as e:
+            print(f"Speech recognition network error: {e}")
+            return None
+        except Exception:
+            continue
+
+    return None
+
+
 def listen_and_transcribe(
     timeout: Optional[int] = None,
     phrase_limit: Optional[int] = None,
@@ -104,10 +127,11 @@ def listen_and_transcribe(
     listen_seconds = phrase_limit or cfg.voice_listen_seconds
     mic_index = _get_mic_index()
 
+    # Sync energy threshold with configuration
+    _recognizer.energy_threshold = cfg.mic_energy_threshold
+
     try:
         with sr.Microphone(device_index=mic_index) as source:
-            # Calibrate for ambient noise every call (~0.3s, silent)
-            _recognizer.adjust_for_ambient_noise(source, duration=0.3)
             print("Listening... (speak now)")
             audio = _recognizer.listen(
                 source,
@@ -124,20 +148,14 @@ def listen_and_transcribe(
         print(f"Unexpected mic error: {e}")
         return None
 
-    # Try Google Speech Recognition (requires internet)
-    try:
-        text = _recognizer.recognize_google(audio, language="en-IN")
-        cleaned = _strip_wake_prefix(text)
-        if cleaned:
-            print(f"Heard: {cleaned}")
-            return cleaned
+    print("Transcribing...")
+    text = _transcribe_audio(audio)
+
+    if not text:
+        print("Didn't catch that. Please speak clearly into the mic.")
         return None
-    except sr.UnknownValueError:
-        print("Didn't catch that. Please try again.")
-        return None
-    except sr.RequestError as e:
-        print(f"Speech recognition service error: {e}")
-        return None
-    except Exception as e:
-        print(f"Transcription error: {e}")
-        return None
+
+    cleaned = _strip_wake_prefix(text)
+    final_text = cleaned if cleaned else text
+    print(f"Heard: {final_text}")
+    return final_text

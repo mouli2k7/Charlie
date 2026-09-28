@@ -34,6 +34,8 @@ class Config(BaseModel):
     anthropic_api_key: Optional[str] = None
     charlie_model: str = "gemini-3.5-flash-lite"
     wake_word: str = "hey charlie"
+    speech_language: str = "en-US"
+    mic_energy_threshold: int = Field(default=150, ge=50, le=4000)
     sites: Dict[str, str] = Field(default_factory=dict)
 
 
@@ -84,6 +86,8 @@ def load_config() -> Config:
         anthropic_api_key=anthropic_key.strip() if anthropic_key and anthropic_key.strip() else None,
         charlie_model=model if model and model.strip() else default_model,
         wake_word=settings_data.get("wake_word", "hey charlie"),
+        speech_language=settings_data.get("speech_language", "en-US"),
+        mic_energy_threshold=int(settings_data.get("mic_energy_threshold", 150)),
         sites=sites_data,
     )
 
