@@ -143,9 +143,8 @@ def _parse_with_gemini(text: str, api_key: str, model_name: str) -> Action:
 
     candidate_models = [
         model_name,
-        "gemini-3.1-flash-lite",
-        "gemini-3.5-flash",
         "gemini-3.5-flash-lite",
+        "gemini-3.1-flash-lite",
         "gemini-3.8-flash",
     ]
     seen = set()
