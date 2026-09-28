@@ -177,7 +177,7 @@ class WakeWordListener:
                     if cmd:
                         self.on_command(cmd)
                     else:
-                        output_response("Yes?", speak=self.cfg.speak_responses)
+                        output_response("Yes?", speak_it=self.cfg.speak_responses)
                         follow_up = listen_and_transcribe(timeout=6, phrase_limit=8)
                         if follow_up:
                             self.on_command(follow_up)

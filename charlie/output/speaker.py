@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import shutil
 import subprocess
-from typing import Optional
+from typing import Any, Optional
 from charlie.config import get_config
 
 
@@ -80,8 +80,15 @@ def output_response(
     message: str,
     action_name: Optional[str] = None,
     speak_it: bool = True,
+    speak_param: Optional[bool] = None,
+    **kwargs: Any,
 ) -> None:
     """Print the assistant response in clean B&W style and speak confirmation."""
+    if speak_param is not None:
+        speak_it = speak_param
+    elif "speak" in kwargs:
+        speak_it = kwargs["speak"]
+
     if action_name and action_name != "unknown":
         print(f"[{action_name}] {message}")
     else:
