@@ -1,6 +1,8 @@
-"""Terminal text input loop for Charlie.
+"""Terminal text + voice input loop for Charlie.
 
-Implements a clean, minimalist black-and-white interactive command loop.
+Phase 1: interactive text command loop.
+Phase 2: adds 'v' or 'voice' to trigger push-to-talk voice listening.
+Both modes feed the exact same command pipeline.
 """
 
 from __future__ import annotations
@@ -12,7 +14,7 @@ from charlie.router import dispatch
 
 
 def run_text_loop() -> None:
-    """Run interactive text-mode command loop in the terminal."""
+    """Run the interactive terminal command loop (text + optional voice)."""
     print_banner()
 
     while True:
@@ -26,6 +28,7 @@ def run_text_loop() -> None:
             continue
 
         cmd_lower = raw.lower()
+
         if cmd_lower in ("exit", "quit", "q"):
             print("Goodbye!")
             break
@@ -39,11 +42,32 @@ def run_text_loop() -> None:
             print_banner()
             continue
 
-        # Parse command into Action
+        # Phase 2: Push-to-talk voice input trigger
+        if cmd_lower in ("v", "voice", "listen", "talk"):
+            _handle_voice_input()
+            continue
+
+        # Text command pipeline
         action = parse(raw)
-
-        # Dispatch action to handler
         success, message = dispatch(action)
-
-        # Display result and speak confirmation
         output_response(message, action_name=action.action if success else None)
+
+
+def _handle_voice_input() -> None:
+    """Activate push-to-talk voice input and pipe through the command pipeline."""
+    try:
+        from charlie.inputs.voice_input import listen_and_transcribe
+    except ImportError:
+        print("Voice input not available: speech_recognition library missing.")
+        return
+
+    text = listen_and_transcribe()
+
+    if not text or not text.strip():
+        print("Charlie: No command detected.")
+        return
+
+    # Feed the transcription through the exact same pipeline as typed text
+    action = parse(text)
+    success, message = dispatch(action)
+    output_response(message, action_name=action.action if success else None)
