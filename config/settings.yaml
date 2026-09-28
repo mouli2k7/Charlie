@@ -1,0 +1,6 @@
+speak_responses: true
+volume_step: 10
+brightness_step: 10
+default_browser: null        # e.g. "Google Chrome"
+voice_listen_seconds: 8
+use_llm_fallback: true
