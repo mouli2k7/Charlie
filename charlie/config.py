@@ -32,7 +32,7 @@ class Config(BaseModel):
     llm_provider: str = "gemini"
     gemini_api_key: Optional[str] = None
     anthropic_api_key: Optional[str] = None
-    charlie_model: str = "gemini-3.5-flash-lite"
+    charlie_model: str = "gemini-3.1-flash-lite"
     wake_word: str = "hey charlie"
     speech_language: str = "en-US"
     mic_energy_threshold: int = Field(default=150, ge=50, le=4000)
@@ -69,7 +69,7 @@ def load_config() -> Config:
     gemini_key = os.getenv("GEMINI_API_KEY")
     anthropic_key = os.getenv("ANTHROPIC_API_KEY")
 
-    default_model = "gemini-3.5-flash-lite" if gemini_key else "claude-sonnet-5"
+    default_model = "gemini-3.1-flash-lite" if gemini_key else "claude-sonnet-5"
     model = os.getenv("CHARLIE_MODEL", default_model)
 
     provider = settings_data.get("llm_provider", "gemini" if gemini_key else "anthropic")

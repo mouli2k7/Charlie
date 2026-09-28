@@ -19,11 +19,33 @@ from charlie.schema import Action, make_unknown, validate_action
 logger = logging.getLogger(__name__)
 
 
+_gemini_client: Optional[Any] = None
+_cached_gemini_key: Optional[str] = None
+
+
+def _get_gemini_client(api_key: str) -> Any:
+    """Return a cached Gemini Client singleton with 1-attempt retry options to prevent hangs."""
+    global _gemini_client, _cached_gemini_key
+    from google import genai
+    from google.genai import types
+
+    if _gemini_client is not None and _cached_gemini_key == api_key:
+        return _gemini_client
+
+    http_opts = types.HttpOptions(
+        retry_options=types.HttpRetryOptions(attempts=1),
+    )
+    _gemini_client = genai.Client(api_key=api_key, http_options=http_opts)
+    _cached_gemini_key = api_key
+    return _gemini_client
+
+
 def get_system_prompt() -> str:
     """Generate system prompt dynamically populated with current local time."""
     now_str = datetime.now().strftime("%A, %B %d, %Y at %I:%M %p").lstrip("0")
-    return f"""You are Charlie, an intelligent macOS assistant and personal companion.
+    return f"""You are Charlie, an intelligent macOS assistant and personal companion with real-time internet search capability.
 Current local macOS system time: {now_str}.
+Always answer user questions directly and naturally. Never say that you do not have internet access or live data; use any live internet context provided or your internal knowledge.
 
 Your job is to convert user commands or questions into structured JSON actions matching our whitelist.
 You must reply with ONLY a single JSON object. Do not include markdown code fences, commentary, or text outside the JSON.
@@ -95,19 +117,37 @@ def _clean_json_text(text: str) -> str:
 
 
 def _parse_with_gemini(text: str, api_key: str, model_name: str) -> Action:
-    """Call Google Gemini API using the google-genai SDK with automatic model failover."""
-    from google import genai
+    """Call Google Gemini API using the google-genai SDK with automatic fast model failover."""
     from google.genai import types
+    from charlie.brain.internet import fetch_live_context
 
-    client = genai.Client(api_key=api_key)
+    client = _get_gemini_client(api_key)
     prompt = get_system_prompt()
     config = types.GenerateContentConfig(
         system_instruction=prompt,
         response_mime_type="application/json",
         temperature=0.0,
+        max_output_tokens=150,
     )
 
-    candidate_models = [model_name, "gemini-3.5-flash-lite", "gemini-3.8-flash", "gemini-flash-latest"]
+    # Check for live internet context (weather, real-time facts, prices)
+    live_ctx = fetch_live_context(text)
+    user_payload = text
+    if live_ctx:
+        user_payload = (
+            f"{text}\n\n"
+            f"[Live Internet Context retrieved just now]:\n"
+            f"{live_ctx}\n"
+            f"Use this live information to provide an accurate, up-to-date answer."
+        )
+
+    candidate_models = [
+        model_name,
+        "gemini-3.1-flash-lite",
+        "gemini-3.5-flash",
+        "gemini-3.5-flash-lite",
+        "gemini-3.8-flash",
+    ]
     seen = set()
     models_to_try = [m for m in candidate_models if not (m in seen or seen.add(m))]
 
@@ -116,7 +156,7 @@ def _parse_with_gemini(text: str, api_key: str, model_name: str) -> Action:
     for m in models_to_try:
         try:
             chat = client.chats.create(model=m, config=config)
-            response = chat.send_message(text)
+            response = chat.send_message(user_payload)
             content = response.text or ""
             clean_json = _clean_json_text(content)
             raw_data = json.loads(clean_json)
@@ -172,7 +212,7 @@ def parse_llm(text: str) -> Action:
 
     try:
         if (provider == "gemini" and has_gemini) or (has_gemini and not has_anthropic):
-            model = cfg.charlie_model if "gemini" in cfg.charlie_model.lower() else "gemini-3.5-flash-lite"
+            model = cfg.charlie_model if "gemini" in cfg.charlie_model.lower() else "gemini-3.1-flash-lite"
             return _parse_with_gemini(text, cfg.gemini_api_key, model)  # type: ignore[arg-type]
         elif has_anthropic:
             model = cfg.charlie_model if "claude" in cfg.charlie_model.lower() else "claude-sonnet-5"

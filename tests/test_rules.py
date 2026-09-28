@@ -126,9 +126,14 @@ from charlie.brain.rules import parse_rules
         ("what time is it", "answer", None),
         ("what is today date", "answer", None),
 
-        # --- Unknown Phrases ---
+        # --- Live Weather & Temperature ---
+        ("what is the current temperature in Delhi", "answer", None),
+        ("what is the weather in Delhi", "answer", None),
+        ("temperature in Mumbai", "answer", None),
+
+        # --- Unknown Phrases (Handled by LLM Fallback) ---
         ("tell me a joke", "unknown", None),
-        ("what is the weather today", "unknown", None),
+        ("tell me a bedtime story", "unknown", None),
         ("asdfghjkl", "unknown", None),
     ],
 )

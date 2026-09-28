@@ -364,6 +364,41 @@ def parse_time_and_date(text: str) -> Optional[Action]:
     return None
 
 
+def parse_weather(text: str) -> Optional[Action]:
+    """Parse weather and temperature inquiries for instant live responses."""
+    from charlie.brain.internet import extract_weather_location, get_live_weather, _WEATHER_GENERAL_RE
+
+    if not _WEATHER_GENERAL_RE.search(text):
+        return None
+
+    # Do not hijack explicit search commands like "search weather on google"
+    if any(k in text for k in ("search", "google", "find")):
+        return None
+
+    loc = extract_weather_location(text)
+    data = get_live_weather(loc)
+    if data:
+        if ":" in data:
+            place, cond = data.split(":", 1)
+            place = place.strip()
+            cond = cond.strip()
+            cond = re.sub(r"\+(\d+)", r"\1", cond)
+            if re.match(r"^[\d.,\s-]+$", place):
+                text_ans = f"It is currently {cond}."
+            else:
+                text_ans = f"In {place}, it is currently {cond}."
+        else:
+            clean = re.sub(r"\+(\d+)", r"\1", data.strip())
+            text_ans = f"The current weather is {clean}."
+
+        return Action(
+            action="answer",
+            params={"text": text_ans},
+            confidence=0.98,
+        )
+    return None
+
+
 def parse_rules(text: str) -> Action:
     """Evaluate text through rule-based parser and return a validated Action."""
     if not text or not text.strip():
@@ -375,6 +410,11 @@ def parse_rules(text: str) -> Action:
 
     # 0. Time & Date (Instant offline answer)
     action = parse_time_and_date(cleaned)
+    if action:
+        return validate_action(action)
+
+    # 0.1 Live Weather & Temperature (Instant live answer)
+    action = parse_weather(cleaned)
     if action:
         return validate_action(action)
 
