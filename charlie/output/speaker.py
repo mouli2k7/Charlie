@@ -48,7 +48,8 @@ def print_banner() -> None:
     print()
     print("┌──────────────────────────────────────────────┐")
     print("│  CHARLIE — macOS Personal Assistant          │")
-    print("│  Type a command, 'help' for examples, 'q'    │")
+    print("│  Type a command or 'v' for voice input        │")
+    print("│  'help' for examples  •  'q' to quit          │")
     print("└──────────────────────────────────────────────┘")
     print()
 
@@ -64,7 +65,8 @@ def print_help() -> None:
     print("  Volume:      volume up | volume down | turn it down a bit | set volume to 40 | mute | unmute")
     print("  Brightness:  brightness up | make the screen dimmer | set brightness to 50")
     print("  Media:       play | pause | next song | previous track")
-    print("  System:      help | exit | quit")
+    print("  Voice:       v  (or: voice / listen / talk) — push-to-talk mic input")
+    print("  System:      help | clear | exit | quit")
     print()
 
 
