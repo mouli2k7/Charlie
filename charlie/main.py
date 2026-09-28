@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import argparse
 import sys
+import time
 from charlie import __version__
 from charlie.brain import parse
 from charlie.inputs.text_input import run_text_loop
@@ -32,6 +33,12 @@ def main() -> None:
         help="Listen once via microphone, run the command, then exit (one-shot voice mode).",
     )
     parser.add_argument(
+        "--wake-word",
+        "-w",
+        action="store_true",
+        help="Run continuous 'Hey Charlie' wake word listener in background.",
+    )
+    parser.add_argument(
         "--version",
         "-v",
         action="version",
@@ -50,6 +57,7 @@ def main() -> None:
     # One-shot voice mode
     if args.voice:
         from charlie.inputs.voice_input import listen_and_transcribe
+
         text = listen_and_transcribe()
         if not text:
             print("Charlie: No command detected.")
@@ -59,7 +67,23 @@ def main() -> None:
         output_response(message, action_name=action.action if success else None)
         sys.exit(0 if success else 1)
 
-    # Interactive terminal loop (text + voice)
+    # Dedicated background wake-word mode
+    if args.wake_word:
+        from charlie.inputs.wake_word import start_wake_word_listener, stop_wake_word_listener
+
+        print(f"Starting Charlie Wake Word daemon (Charlie v{__version__})...")
+        print("Say 'Hey Charlie' or 'Hey Charlie <command>' (Ctrl+C to quit).")
+        listener = start_wake_word_listener()
+        try:
+            while True:
+                time.sleep(1)
+        except (KeyboardInterrupt, SystemExit):
+            print("\nStopping wake word listener...")
+            stop_wake_word_listener()
+            print("Goodbye!")
+            sys.exit(0)
+
+    # Interactive terminal loop (text + voice + wake word)
     run_text_loop()
 
 
