@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import shutil
 import subprocess
-from typing import Optional
+from typing import Any, Optional
 from charlie.config import get_config
 
 
@@ -45,10 +45,15 @@ def speak(text: str, non_blocking: bool = True) -> None:
 
 def print_banner() -> None:
     """Print a clean, minimal black-and-white startup banner."""
+    cfg = get_config()
+    llm_info = "Gemini LLM active" if cfg.gemini_api_key else ("Claude active" if cfg.anthropic_api_key else "Offline rules")
+
     print()
     print("┌──────────────────────────────────────────────┐")
     print("│  CHARLIE — macOS Personal Assistant          │")
-    print("│  Type a command or 'v' for voice input        │")
+    print(f"│  {llm_info:<44}│")
+    print("│  Type a command  •  'v' for voice input      │")
+    print("│  'w' for 'Hey Charlie' wake word listener    │")
     print("│  'help' for examples  •  'q' to quit          │")
     print("└──────────────────────────────────────────────┘")
     print()
@@ -61,11 +66,12 @@ def print_help() -> None:
     print("  Apps:        open safari | launch notes | close chrome | quit spotify")
     print("  Web Search:  open amazon and search for wireless earbuds")
     print("               search running shoes on flipkart | google best laptops")
-    print("  Open URL:    open youtube | go to github.com")
+    print("  Open URL:    open youtube | go to github.com | can you pull up youtube for me")
     print("  Volume:      volume up | volume down | turn it down a bit | set volume to 40 | mute | unmute")
     print("  Brightness:  brightness up | make the screen dimmer | set brightness to 50")
     print("  Media:       play | pause | next song | previous track")
-    print("  Voice:       v  (or: voice / listen / talk) — push-to-talk mic input")
+    print("  Voice:       v  (push-to-talk mic input)")
+    print("  Wake Word:   w  (toggle background 'Hey Charlie' listener)")
     print("  System:      help | clear | exit | quit")
     print()
 
@@ -74,8 +80,15 @@ def output_response(
     message: str,
     action_name: Optional[str] = None,
     speak_it: bool = True,
+    speak_param: Optional[bool] = None,
+    **kwargs: Any,
 ) -> None:
     """Print the assistant response in clean B&W style and speak confirmation."""
+    if speak_param is not None:
+        speak_it = speak_param
+    elif "speak" in kwargs:
+        speak_it = kwargs["speak"]
+
     if action_name and action_name != "unknown":
         print(f"[{action_name}] {message}")
     else:

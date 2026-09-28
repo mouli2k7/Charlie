@@ -4,3 +4,7 @@ brightness_step: 10
 default_browser: null        # e.g. "Google Chrome"
 voice_listen_seconds: 8
 use_llm_fallback: true
+llm_provider: "gemini"       # "gemini" or "anthropic"
+wake_word: "hey charlie"     # wake word phrase for background listening
+speech_language: "en-US"     # primary recognition language (falls back to en-IN)
+mic_energy_threshold: 150    # microphone sensitivity threshold (lower = more sensitive)

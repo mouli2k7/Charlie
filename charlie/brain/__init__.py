@@ -15,14 +15,14 @@ def parse(text: str) -> Action:
     """Parse natural language command into a validated Action.
 
     Tries fast offline rule-based parser first. If unknown or low confidence,
-    falls back to the Anthropic LLM parser when configured.
+    falls back to the configured LLM parser (Gemini or Anthropic).
     """
     action = parse_rules(text)
     if action.action != "unknown" and action.confidence >= 0.7:
         return action
 
     cfg = get_config()
-    if cfg.use_llm_fallback and cfg.anthropic_api_key:
+    if cfg.use_llm_fallback and (cfg.gemini_api_key or cfg.anthropic_api_key):
         llm_action = parse_llm(text)
         if llm_action.action != "unknown":
             return llm_action

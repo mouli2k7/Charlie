@@ -29,8 +29,13 @@ class Config(BaseModel):
     default_browser: Optional[str] = None
     voice_listen_seconds: int = Field(default=8, ge=1, le=60)
     use_llm_fallback: bool = True
+    llm_provider: str = "gemini"
+    gemini_api_key: Optional[str] = None
     anthropic_api_key: Optional[str] = None
-    charlie_model: str = "claude-sonnet-5"
+    charlie_model: str = "gemini-3.5-flash-lite"
+    wake_word: str = "hey charlie"
+    speech_language: str = "en-US"
+    mic_energy_threshold: int = Field(default=150, ge=50, le=4000)
     sites: Dict[str, str] = Field(default_factory=dict)
 
 
@@ -61,8 +66,13 @@ def load_config() -> Config:
         except Exception:
             sites_data = {}
 
-    api_key = os.getenv("ANTHROPIC_API_KEY")
-    model = os.getenv("CHARLIE_MODEL", "claude-sonnet-5")
+    gemini_key = os.getenv("GEMINI_API_KEY")
+    anthropic_key = os.getenv("ANTHROPIC_API_KEY")
+
+    default_model = "gemini-3.5-flash-lite" if gemini_key else "claude-sonnet-5"
+    model = os.getenv("CHARLIE_MODEL", default_model)
+
+    provider = settings_data.get("llm_provider", "gemini" if gemini_key else "anthropic")
 
     return Config(
         speak_responses=settings_data.get("speak_responses", True),
@@ -71,8 +81,13 @@ def load_config() -> Config:
         default_browser=settings_data.get("default_browser"),
         voice_listen_seconds=int(settings_data.get("voice_listen_seconds", 8)),
         use_llm_fallback=settings_data.get("use_llm_fallback", True),
-        anthropic_api_key=api_key if api_key and api_key.strip() else None,
-        charlie_model=model if model and model.strip() else "claude-sonnet-5",
+        llm_provider=provider,
+        gemini_api_key=gemini_key.strip() if gemini_key and gemini_key.strip() else None,
+        anthropic_api_key=anthropic_key.strip() if anthropic_key and anthropic_key.strip() else None,
+        charlie_model=model if model and model.strip() else default_model,
+        wake_word=settings_data.get("wake_word", "hey charlie"),
+        speech_language=settings_data.get("speech_language", "en-US"),
+        mic_energy_threshold=int(settings_data.get("mic_energy_threshold", 150)),
         sites=sites_data,
     )
 
