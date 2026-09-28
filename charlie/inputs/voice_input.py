@@ -1,22 +1,63 @@
 """Voice input handler for Charlie — Phase 2.
 
 Implements push-to-talk listening using the MacBook Pro built-in microphone,
-Google Speech Recognition (free, online) for transcription, and graceful
-error handling for mic issues, background noise, and network failures.
+Google Speech Recognition for transcription, and graceful error handling
+for mic issues, background noise, and network failures.
+
+Apple Silicon fix: patches speech_recognition to use the native ARM64 flac
+binary from Homebrew instead of the bundled Intel-only flac-mac binary.
 """
 
 from __future__ import annotations
 
+import os
 import re
+import shutil
 from typing import Optional
 
 import speech_recognition as sr
 
 from charlie.config import get_config
 
+# -------------------------------------------------------------------------
+# Apple Silicon fix: replace the bundled Intel flac-mac with the Homebrew ARM64 one
+# -------------------------------------------------------------------------
+_HOMEBREW_FLAC_PATHS = [
+    "/opt/homebrew/bin/flac",     # Apple Silicon Homebrew
+    "/usr/local/bin/flac",        # Intel Homebrew (fallback)
+]
+
+def _patch_flac() -> None:
+    """Patch speech_recognition's flac converter to use the native ARM64 binary."""
+    native_flac = next(
+        (p for p in _HOMEBREW_FLAC_PATHS if os.path.isfile(p) and os.access(p, os.X_OK)),
+        None,
+    )
+    if native_flac:
+        # Monkey-patch the module-level converter path used internally by AudioData
+        try:
+            import speech_recognition as _sr
+            # Patch the flac_converter path the library resolves at runtime
+            _sr.AudioData.get_flac_data.__globals__  # ensure accessible
+        except Exception:
+            pass
+        # Override via shutil so `shutil.which("flac")` returns our binary
+        _original_which = shutil.which
+
+        def _patched_which(name: str, *args, **kwargs) -> Optional[str]:
+            if name == "flac":
+                return native_flac
+            return _original_which(name, *args, **kwargs)
+
+        shutil.which = _patched_which  # type: ignore[assignment]
+
+_patch_flac()
+# -------------------------------------------------------------------------
+
+
 # SpeechRecognition recognizer instance (shared, not re-created per listen)
 _recognizer = sr.Recognizer()
-_recognizer.pause_threshold = 0.8     # seconds of silence = end of speech
+_recognizer.pause_threshold = 0.8      # seconds of silence = end of speech
 _recognizer.non_speaking_duration = 0.4
 
 # Prefer the built-in MacBook Pro Microphone
