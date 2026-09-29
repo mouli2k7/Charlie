@@ -38,6 +38,7 @@ HANDLER_MAP: Dict[str, ActionHandler] = {
     ),
     "brightness_set": lambda p: brightness.brightness_set(level=p["level"]),
     "media_control": lambda p: media.media_control(command=p["command"]),
+    "answer": lambda p: (True, p.get("text", "")),
 }
 
 

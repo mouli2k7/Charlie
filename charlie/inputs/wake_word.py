@@ -19,7 +19,9 @@ from charlie.brain import parse
 from charlie.config import get_config
 from charlie.inputs.voice_input import (
     _get_mic_index,
+    _strip_wake_prefix,
     _transcribe_audio,
+    _transcribe_audio_candidates,
     listen_and_transcribe,
 )
 from charlie.output.speaker import output_response
@@ -27,12 +29,22 @@ from charlie.router import dispatch
 
 logger = logging.getLogger(__name__)
 
+# Phonetic and dialect variants for 'Charlie' and preceding greetings
+WAKE_NAME_VARIANTS = (
+    r"(?:charlie|charley|charly|charli|charlee|charle|charl|char|"
+    r"sharlie|sharli|sharly|cherry|jolly|curly|carly|karli|karly|"
+    r"harley|chaley|chali|challie)"
+)
+GREETING_VARIANTS = r"(?:hey|hay|he|hi|hai|hello|hallo|ok|okay|yo|ay|a|eh|uh|um|so|please|can\s+you)?"
+
 
 def build_wake_pattern(wake_word: str = "hey charlie") -> re.Pattern:
     """Build a flexible regex pattern to detect the wake word and phonetic variants."""
     clean = wake_word.strip().lower()
     if "charlie" in clean:
-        pattern_str = r"^\s*(?:hey|hi|hello|ok|okay|a)?\s*(?:charlie|charley|charly|sharlie)[,:\s-]*(.*)$"
+        pattern_str = (
+            rf"^\s*(?:{GREETING_VARIANTS}\s+)?{WAKE_NAME_VARIANTS}\b[,:\s-]*(.*)$"
+        )
     else:
         escaped = re.escape(clean)
         pattern_str = rf"^\s*(?:{escaped})[,:\s-]*(.*)$"
@@ -50,14 +62,19 @@ def extract_wake_command(text: str, wake_word: str = "hey charlie") -> Tuple[boo
     if not text:
         return False, ""
 
+    clean_text = text.strip()
     pattern = build_wake_pattern(wake_word)
-    match = pattern.match(text.strip())
+    match = pattern.match(clean_text)
     if match:
         return True, match.group(1).strip()
 
     # Also handle wake word appended at the end (e.g. "open spotify charlie")
     if "charlie" in wake_word.lower():
-        trailing_match = re.search(r"^(.*?)[,:\s]+(?:charlie|charley|charly)\s*$", text.strip(), re.IGNORECASE)
+        trailing_pattern = re.compile(
+            rf"^(.*?)[,:\s]+(?:{GREETING_VARIANTS}\s+)?{WAKE_NAME_VARIANTS}\s*$",
+            re.IGNORECASE,
+        )
+        trailing_match = trailing_pattern.match(clean_text)
         if trailing_match and trailing_match.group(1).strip():
             return True, trailing_match.group(1).strip()
 
@@ -81,10 +98,10 @@ class WakeWordListener:
         self._recognizer.energy_threshold = self.cfg.mic_energy_threshold
         self._recognizer.dynamic_energy_threshold = True
         self._recognizer.dynamic_energy_adjustment_damping = 0.15
-        self._recognizer.dynamic_energy_ratio = 1.5
-        self._recognizer.pause_threshold = 0.8
-        self._recognizer.phrase_threshold = 0.2
-        self._recognizer.non_speaking_duration = 0.3
+        self._recognizer.dynamic_energy_ratio = 1.3
+        self._recognizer.pause_threshold = 0.35       # 350ms silence cut-off for fast wake detection
+        self._recognizer.phrase_threshold = 0.1      # Instant speech onset detection
+        self._recognizer.non_speaking_duration = 0.15  # Minimal padding to eliminate latency
 
     @property
     def is_running(self) -> bool:
@@ -141,46 +158,80 @@ class WakeWordListener:
         try:
             # KEEP STREAM OPEN: Enter context ONCE to avoid PyAudio stream open/close lag
             with mic as source:
-                self._recognizer.adjust_for_ambient_noise(source, duration=0.4)
-                # Clamp threshold to ensure high sensitivity
-                self._recognizer.energy_threshold = max(80, min(self._recognizer.energy_threshold, 250))
+                self._recognizer.adjust_for_ambient_noise(source, duration=0.3)
+                # Keep sensitivity high and prevent background noise runaway
+                self._recognizer.energy_threshold = max(60, min(self._recognizer.energy_threshold, 180))
 
                 while not self._stop_event.is_set():
                     try:
                         audio = self._recognizer.listen(
                             source,
                             timeout=1.0,
-                            phrase_time_limit=6.0,
+                            phrase_time_limit=3.5,
                         )
                     except sr.WaitTimeoutError:
                         continue
                     except Exception as e:
                         if not self._stop_event.is_set():
                             logger.debug("Wake word mic read error: %s", e)
-                            time.sleep(0.1)
+                            time.sleep(0.05)
                         continue
 
                     if self._stop_event.is_set():
                         break
 
-                    # Multi-language transcribe
-                    text = _transcribe_audio(audio)
-                    if not text:
+                    # Parallel multi-candidate transcribe across languages
+                    candidates = _transcribe_audio_candidates(audio, recognizer=self._recognizer)
+                    if not candidates:
                         continue
 
-                    triggered, cmd = extract_wake_command(text, self.wake_word)
-                    if not triggered:
+                    # Search all candidate hypotheses for wake word match
+                    matched_cmd: Optional[str] = None
+                    matched_text: Optional[str] = None
+
+                    for cand in candidates:
+                        triggered, cmd = extract_wake_command(cand, self.wake_word)
+                        if triggered:
+                            if matched_cmd is None or (cmd and not matched_cmd):
+                                matched_cmd = cmd
+                                matched_text = cand
+                            if cmd:
+                                break
+
+                    if matched_cmd is None:
                         continue
 
-                    print(f"\n[Wake Word] Triggered! Heard: '{text}'")
+                    print(f"\n[Wake Word] Triggered! Heard: '{matched_text}'")
 
-                    if cmd:
-                        self.on_command(cmd)
+                    # Instant non-blocking visual on-screen popup and audio chime (<5ms)
+                    try:
+                        from charlie.ui.popup import show_wake_popup
+                        show_wake_popup(command=matched_cmd)
+                    except Exception as popup_err:
+                        logger.debug("Failed to show wake popup: %s", popup_err)
+
+                    if matched_cmd:
+                        self.on_command(matched_cmd)
                     else:
-                        output_response("Yes?", speak_it=self.cfg.speak_responses)
-                        follow_up = listen_and_transcribe(timeout=6, phrase_limit=8)
-                        if follow_up:
-                            self.on_command(follow_up)
+                        print("[Wake Word] Waiting for your command...")
+                        try:
+                            # Re-use the existing open microphone stream without reopening
+                            follow_up_audio = self._recognizer.listen(
+                                source,
+                                timeout=5.0,
+                                phrase_time_limit=7.0,
+                            )
+                            follow_candidates = _transcribe_audio_candidates(
+                                follow_up_audio, recognizer=self._recognizer
+                            )
+                            if follow_candidates:
+                                follow_cmd = _strip_wake_prefix(follow_candidates[0])
+                                if follow_cmd:
+                                    self.on_command(follow_cmd)
+                        except sr.WaitTimeoutError:
+                            print("[Wake Word] No follow-up command detected.")
+                        except Exception as follow_err:
+                            logger.debug("Follow-up listen error: %s", follow_err)
         except Exception as e:
             logger.error("Wake word listener loop error: %s", e)
         finally:

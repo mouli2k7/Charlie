@@ -76,6 +76,11 @@ class MediaControlParams(BaseModel):
     command: Literal["play_pause", "next", "previous"]
 
 
+class AnswerParams(BaseModel):
+    """Parameters for conversational Q&A answer action."""
+    text: str = Field(min_length=1)
+
+
 class UnknownParams(BaseModel):
     """Parameters for unknown action."""
     reason: str = Field(default="Command could not be understood.")
@@ -94,6 +99,7 @@ PARAM_MODELS: Dict[str, type[BaseModel]] = {
     "brightness_change": BrightnessChangeParams,
     "brightness_set": BrightnessSetParams,
     "media_control": MediaControlParams,
+    "answer": AnswerParams,
     "unknown": UnknownParams,
 }
 

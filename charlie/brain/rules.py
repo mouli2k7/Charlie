@@ -329,6 +329,117 @@ def parse_apps(text: str) -> Optional[Action]:
     return None
 
 
+def parse_time_and_date(text: str) -> Optional[Action]:
+    """Parse time and date inquiries for instant, offline assistant responses."""
+    from datetime import datetime
+
+    time_match = bool(
+        re.search(
+            r"\b(?:what\s+(?:is\s+)?(?:the\s+)?time|what\s+time|current\s+time|time\s+now|time\s+is\s+it|tell\s+me\s+(?:the\s+)?time)\b",
+            text,
+            re.IGNORECASE,
+        )
+    )
+    if time_match and not any(k in text for k in ("search", "google", "find")):
+        now = datetime.now()
+        time_str = now.strftime("%I:%M %p").lstrip("0")
+        return Action(
+            action="answer",
+            params={"text": f"It is {time_str}."},
+            confidence=1.0,
+        )
+
+    date_match = bool(
+        re.search(
+            r"\b(?:what\s+(?:is\s+)?(?:the\s+)?date|today'?s?\s+date|date\s+today|date\s+is\s+it|what\s+day\s+is\s+(?:it|today)|which\s+day\s+is\s+it)\b",
+            text,
+            re.IGNORECASE,
+        )
+    )
+    if date_match and not any(k in text for k in ("search", "google", "find")):
+        now = datetime.now()
+        date_str = now.strftime("%A, %B %d, %Y")
+        return Action(
+            action="answer",
+            params={"text": f"Today is {date_str}."},
+            confidence=1.0,
+        )
+
+    return None
+
+
+def parse_conversational(text: str) -> Optional[Action]:
+    """Parse common identity and conversational pleasantries for instant offline responses."""
+    # Identity: "who are you", "what is your name", "what are you"
+    if re.search(r"\b(?:who\s+are\s+you|what\s+(?:is|'s)\s+your\s+name|what\s+are\s+you)\b", text, re.IGNORECASE):
+        return Action(
+            action="answer",
+            params={"text": "I am Charlie, your macOS personal assistant."},
+            confidence=1.0,
+        )
+
+    # How are you: "how are you", "how are you doing", "how's it going"
+    if re.search(r"\b(?:how\s+are\s+you|how\s+are\s+you\s+doing|how'?s\s+it\s+going)\b", text, re.IGNORECASE):
+        return Action(
+            action="answer",
+            params={"text": "I'm doing great and ready to help you!"},
+            confidence=1.0,
+        )
+
+    # Simple greetings: "hello", "hi", "hey"
+    if re.fullmatch(r"(?:hello|hi|hey|good\s+morning|good\s+afternoon|good\s+evening)", text, re.IGNORECASE):
+        return Action(
+            action="answer",
+            params={"text": "Hello! How can I help you today?"},
+            confidence=1.0,
+        )
+
+    # Gratitude: "thank you", "thanks"
+    if re.fullmatch(r"(?:thank\s+you|thanks|thank\s+you\s+so\s+much)", text, re.IGNORECASE):
+        return Action(
+            action="answer",
+            params={"text": "You're welcome!"},
+            confidence=1.0,
+        )
+
+    return None
+
+
+def parse_weather(text: str) -> Optional[Action]:
+    """Parse weather and temperature inquiries for instant live responses."""
+    from charlie.brain.internet import extract_weather_location, get_live_weather, _WEATHER_GENERAL_RE
+
+    if not _WEATHER_GENERAL_RE.search(text):
+        return None
+
+    # Do not hijack explicit search commands like "search weather on google"
+    if any(k in text for k in ("search", "google", "find")):
+        return None
+
+    loc = extract_weather_location(text)
+    data = get_live_weather(loc)
+    if data:
+        if ":" in data:
+            place, cond = data.split(":", 1)
+            place = place.strip()
+            cond = cond.strip()
+            cond = re.sub(r"\+(\d+)", r"\1", cond)
+            if re.match(r"^[\d.,\s-]+$", place):
+                text_ans = f"It is currently {cond}."
+            else:
+                text_ans = f"In {place}, it is currently {cond}."
+        else:
+            clean = re.sub(r"\+(\d+)", r"\1", data.strip())
+            text_ans = f"The current weather is {clean}."
+
+        return Action(
+            action="answer",
+            params={"text": text_ans},
+            confidence=0.98,
+        )
+    return None
+
+
 def parse_rules(text: str) -> Action:
     """Evaluate text through rule-based parser and return a validated Action."""
     if not text or not text.strip():
@@ -337,6 +448,21 @@ def parse_rules(text: str) -> Action:
     cleaned = clean_input(text)
     if not cleaned:
         return make_unknown("No command detected.")
+
+    # 0. Time & Date (Instant offline answer)
+    action = parse_time_and_date(cleaned)
+    if action:
+        return validate_action(action)
+
+    # 0.1 Conversational Pleasantries (Instant offline answer)
+    action = parse_conversational(cleaned)
+    if action:
+        return validate_action(action)
+
+    # 0.2 Live Weather & Temperature (Instant live answer)
+    action = parse_weather(cleaned)
+    if action:
+        return validate_action(action)
 
     # 1. Volume & Mute
     action = parse_volume(cleaned)

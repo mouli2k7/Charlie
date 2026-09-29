@@ -36,6 +36,8 @@ class Config(BaseModel):
     wake_word: str = "hey charlie"
     speech_language: str = "en-US"
     mic_energy_threshold: int = Field(default=150, ge=50, le=4000)
+    voice_name: Optional[str] = "Samantha"
+    wake_popup_style: str = "both"
     sites: Dict[str, str] = Field(default_factory=dict)
 
 
@@ -88,6 +90,8 @@ def load_config() -> Config:
         wake_word=settings_data.get("wake_word", "hey charlie"),
         speech_language=settings_data.get("speech_language", "en-US"),
         mic_energy_threshold=int(settings_data.get("mic_energy_threshold", 150)),
+        voice_name=os.getenv("CHARLIE_VOICE", settings_data.get("voice_name", "Samantha")),
+        wake_popup_style=settings_data.get("wake_popup_style", "both"),
         sites=sites_data,
     )
 
@@ -105,3 +109,23 @@ def reload_config() -> Config:
     global _config_instance
     _config_instance = load_config()
     return _config_instance
+
+
+def save_setting(key: str, value: Any) -> None:
+    """Save setting to settings.yaml and reload active config."""
+    settings_file = CONFIG_DIR / "settings.yaml"
+    settings_data: Dict[str, Any] = {}
+    if settings_file.is_file():
+        try:
+            with open(settings_file, "r", encoding="utf-8") as f:
+                content = yaml.safe_load(f)
+                if isinstance(content, dict):
+                    settings_data = content
+        except Exception:
+            settings_data = {}
+
+    settings_data[key] = value
+    with open(settings_file, "w", encoding="utf-8") as f:
+        yaml.safe_dump(settings_data, f, default_flow_style=False)
+
+    reload_config()

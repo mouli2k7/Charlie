@@ -24,6 +24,13 @@ def test_valid_media_control():
     assert res.params["command"] == "play_pause"
 
 
+def test_valid_answer():
+    raw = {"action": "answer", "params": {"text": "The time is 1:00 AM."}}
+    res = validate_action(raw)
+    assert res.action == "answer"
+    assert res.params["text"] == "The time is 1:00 AM."
+
+
 def test_non_whitelisted_action_becomes_unknown():
     raw = {"action": "delete_all_files", "params": {"path": "/Users"}}
     res = validate_action(raw)

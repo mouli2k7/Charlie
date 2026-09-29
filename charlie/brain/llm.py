@@ -1,12 +1,13 @@
 """LLM parser for Charlie using Gemini API (with optional Anthropic fallback).
 
 Used strictly as a fallback when rule-based parsing yields unknown or low confidence.
-The LLM only classifies the command into the fixed action whitelist and never produces
-executable shell code.
+The LLM classifies commands into whitelist actions, or uses the 'answer' action
+to provide direct conversational answers, facts, prices, and knowledge.
 """
 
 from __future__ import annotations
 
+from datetime import datetime
 import json
 import logging
 import re
@@ -17,55 +18,96 @@ from charlie.schema import Action, make_unknown, validate_action
 
 logger = logging.getLogger(__name__)
 
-SYSTEM_PROMPT = """You are Charlie, an intelligent macOS command assistant.
-Your job is to convert natural language commands into structured JSON actions matching our strict whitelist.
-You must reply with ONLY a single JSON object. Do not include markdown code fences, commentary, or text outside the JSON.
+
+_gemini_client: Optional[Any] = None
+_cached_gemini_key: Optional[str] = None
+
+
+def _get_gemini_client(api_key: str) -> Any:
+    """Return a cached Gemini Client singleton with 1-attempt retry options to prevent hangs."""
+    global _gemini_client, _cached_gemini_key
+    from google import genai
+    from google.genai import types
+
+    if _gemini_client is not None and _cached_gemini_key == api_key:
+        return _gemini_client
+
+    http_opts = types.HttpOptions(
+        retry_options=types.HttpRetryOptions(attempts=1),
+    )
+    _gemini_client = genai.Client(api_key=api_key, http_options=http_opts)
+    _cached_gemini_key = api_key
+    return _gemini_client
+
+
+def get_system_prompt() -> str:
+    """Generate system prompt dynamically populated with current local time."""
+    now = datetime.now()
+    now_str = now.strftime("%A, %B %d, %Y at %I:%M %p").lstrip("0")
+    year_str = now.strftime("%Y")
+    return f"""You are Charlie, an intelligent macOS assistant and personal companion with real-time internet search capability.
+Current local macOS system time: {now_str}.
+Current year: {year_str}.
+Always answer user questions directly, naturally, and with up-to-date live information. Never say that you do not have internet access or live data; use the live real-time internet data provided below or your knowledge.
+
+CRITICAL INSTRUCTION: When the user asks any question, asks for search information, prices, exchange rates, facts, phones/gadgets, or knowledge:
+ALWAYS synthesize and analyze the live data into a concise, direct, helpful answer suitable for speaking aloud (1-2 clear sentences).
+DO NOT return a 'web_search' action that tells the user to open Google and read it themselves!
+Analyze the search results for the user and speak the answer using the 'answer' action!
+Only use 'web_search' if the user explicitly asks to open a specific website like Amazon, Flipkart, or YouTube to browse products.
 
 Allowed Whitelist Actions and Parameters:
-1. open_app: {"app": "Exact or Common Application Name"}
-   Example: "launch terminal" -> {"action": "open_app", "params": {"app": "Terminal"}, "confidence": 0.95}
+1. open_app: {{"app": "Exact or Common Application Name"}}
+   Example: "launch terminal" -> {{"action": "open_app", "params": {{"app": "Terminal"}}, "confidence": 0.95}}
 
-2. close_app: {"app": "Application Name to quit"}
-   Example: "quit chrome" -> {"action": "close_app", "params": {"app": "Google Chrome"}, "confidence": 0.95}
+2. close_app: {{"app": "Application Name to quit"}}
+   Example: "quit chrome" -> {{"action": "close_app", "params": {{"app": "Google Chrome"}}, "confidence": 0.95}}
 
-3. web_search: {"site": "google"|"amazon"|"flipkart"|"youtube"|"myntra"|"meesho", "query": "search query", "browser": null or "Chrome"|"Safari"}
-   Example: "search mechanical keyboard on amazon" -> {"action": "web_search", "params": {"site": "amazon", "query": "mechanical keyboard", "browser": null}, "confidence": 0.95}
+3. web_search: {{"site": "google"|"amazon"|"flipkart"|"youtube"|"myntra"|"meesho", "query": "search query", "browser": null or "Chrome"|"Safari"}}
+   Use ONLY when the user explicitly asks to open a shopping/video website or specific browser.
+   Example: "search mechanical keyboard on amazon" -> {{"action": "web_search", "params": {{"site": "amazon", "query": "mechanical keyboard", "browser": null}}, "confidence": 0.95}}
 
-4. open_url: {"url": "https://..." or null, "site": "site_name" or null, "browser": null}
-   Note: For web services/sites (e.g. YouTube, GitHub, Reddit) when the user asks to open or pull them up, use open_url with the full URL.
-   Example: "can you pull up youtube for me" -> {"action": "open_url", "params": {"url": "https://www.youtube.com", "site": "youtube", "browser": null}, "confidence": 0.95}
+4. open_url: {{"url": "https://..." or null, "site": "site_name" or null, "browser": null}}
+   Example: "pull up youtube for me" -> {{"action": "open_url", "params": {{"url": "https://www.youtube.com", "site": "youtube", "browser": null}}, "confidence": 0.95}}
 
-5. volume_change: {"direction": "up"|"down", "amount": 5|10|25}
+5. volume_change: {{"direction": "up"|"down", "amount": 5|10|25}}
    Note: "a bit" / "a little" = 5; "a lot" = 25; default = 10.
-   Example: "make it a bit louder" -> {"action": "volume_change", "params": {"direction": "up", "amount": 5}, "confidence": 0.95}
+   Example: "make it a bit louder" -> {{"action": "volume_change", "params": {{"direction": "up", "amount": 5}}, "confidence": 0.95}}
 
-6. volume_set: {"level": 0-100}
-   Example: "set sound to 40 percent" -> {"action": "volume_set", "params": {"level": 40}, "confidence": 0.95}
+6. volume_set: {{"level": 0-100}}
+   Example: "set sound to 40 percent" -> {{"action": "volume_set", "params": {{"level": 40}}, "confidence": 0.95}}
 
-7. mute: {}
-   Example: "silence mac" -> {"action": "mute", "params": {}, "confidence": 0.95}
+7. mute: {{}}
+   Example: "silence mac" -> {{"action": "mute", "params": {{}}, "confidence": 0.95}}
 
-8. unmute: {}
-   Example: "turn sound back on" -> {"action": "unmute", "params": {}, "confidence": 0.95}
+8. unmute: {{}}
+   Example: "turn sound back on" -> {{"action": "unmute", "params": {{}}, "confidence": 0.95}}
 
-9. brightness_change: {"direction": "up"|"down", "amount": 5|10|25}
-   Example: "dim the screen please" -> {"action": "brightness_change", "params": {"direction": "down", "amount": 10}, "confidence": 0.95}
+9. brightness_change: {{"direction": "up"|"down", "amount": 5|10|25}}
+   Example: "dim the screen please" -> {{"action": "brightness_change", "params": {{"direction": "down", "amount": 10}}, "confidence": 0.95}}
 
-10. brightness_set: {"level": 0-100}
-    Example: "set display to 75%" -> {"action": "brightness_set", "params": {"level": 75}, "confidence": 0.95}
+10. brightness_set: {{"level": 0-100}}
+    Example: "set display to 75%" -> {{"action": "brightness_set", "params": {{"level": 75}}, "confidence": 0.95}}
 
-11. media_control: {"command": "play_pause"|"next"|"previous"}
-    Example: "skip to the next track" -> {"action": "media_control", "params": {"command": "next"}, "confidence": 0.95}
+11. media_control: {{"command": "play_pause"|"next"|"previous"}}
+    Example: "skip to the next track" -> {{"action": "media_control", "params": {{"command": "next"}}, "confidence": 0.95}}
 
-12. unknown: {"reason": "Friendly explanation of why the action is not supported"}
-    Example: "what is the capital of France" -> {"action": "unknown", "params": {"reason": "General questions are not supported; Charlie is a Mac controller."}, "confidence": 0.95}
+12. answer: {{"text": "Concise, natural, up-to-date answer (1-2 sentences suitable for text-to-speech)"}}
+    Use this whenever the user asks any question, asks for prices/costs, exchange rates, phones/gadgets, facts, explanations, time, date, weather info, math, or conversational chat.
+    Example: "what is the cost of iPhone 16" -> {{"action": "answer", "params": {{"text": "The iPhone 16 starts at $799, while the iPhone 16 Pro starts at $999."}}, "confidence": 0.98}}
+    Example: "what is the exchange rate of dollar to rupee" -> {{"action": "answer", "params": {{"text": "The current exchange rate is approximately 96 rupees per US dollar."}}, "confidence": 0.98}}
+    Example: "who is the CEO of Google" -> {{"action": "answer", "params": {{"text": "Sundar Pichai is the CEO of Google and Alphabet."}}, "confidence": 0.98}}
+    Example: "tell me a joke" -> {{"action": "answer", "params": {{"text": "Why do programmers prefer dark mode? Because light attracts bugs!"}}, "confidence": 0.98}}
+
+13. unknown: {{"reason": "Explanation"}}
+    Only use this if the command is completely incomprehensible gibberish.
 
 JSON Output Schema:
-{
+{{
   "action": "<action_name>",
-  "params": { ... },
+  "params": {{ ... }},
   "confidence": <float between 0.0 and 1.0>
-}
+}}
 """
 
 
@@ -74,7 +116,6 @@ def _clean_json_text(text: str) -> str:
     cleaned = text.strip()
     cleaned = re.sub(r"^```(?:json)?\s*", "", cleaned, flags=re.MULTILINE)
     cleaned = re.sub(r"\s*```$", "", cleaned, flags=re.MULTILINE).strip()
-    # In case there is text before the first '{' or after the last '}'
     first_brace = cleaned.find("{")
     last_brace = cleaned.rfind("}")
     if first_brace != -1 and last_brace != -1 and last_brace >= first_brace:
@@ -83,24 +124,55 @@ def _clean_json_text(text: str) -> str:
 
 
 def _parse_with_gemini(text: str, api_key: str, model_name: str) -> Action:
-    """Call Google Gemini API using the google-genai SDK."""
-    from google import genai
+    """Call Google Gemini API using the google-genai SDK with automatic fast model failover."""
     from google.genai import types
+    from charlie.brain.internet import fetch_live_context
 
-    client = genai.Client(api_key=api_key)
+    client = _get_gemini_client(api_key)
+    prompt = get_system_prompt()
     config = types.GenerateContentConfig(
-        system_instruction=SYSTEM_PROMPT,
+        system_instruction=prompt,
         response_mime_type="application/json",
         temperature=0.0,
+        max_output_tokens=150,
     )
 
-    chat = client.chats.create(model=model_name, config=config)
-    response = chat.send_message(text)
+    # Check for live internet context (real-time forex, weather, or live search)
+    live_ctx = fetch_live_context(text)
+    user_payload = text
+    if live_ctx:
+        user_payload = (
+            f"{text}\n\n"
+            f"[Live Real-Time Internet Data retrieved just now]:\n"
+            f"{live_ctx}\n"
+            f"Analyze and use this live information to provide an accurate, up-to-date spoken answer."
+        )
 
-    content = response.text or ""
-    clean_json = _clean_json_text(content)
-    raw_data = json.loads(clean_json)
-    return validate_action(raw_data)
+    candidate_models = [
+        "gemini-3.5-flash-lite",
+        model_name,
+        "gemini-3.1-flash-lite",
+        "gemini-3.8-flash",
+    ]
+    seen = set()
+    models_to_try = [m for m in candidate_models if not (m in seen or seen.add(m))]
+
+    last_error: Optional[Exception] = None
+
+    for m in models_to_try:
+        try:
+            chat = client.chats.create(model=m, config=config)
+            response = chat.send_message(user_payload)
+            content = response.text or ""
+            clean_json = _clean_json_text(content)
+            raw_data = json.loads(clean_json)
+            return validate_action(raw_data)
+        except Exception as e:
+            last_error = e
+            logger.warning("Gemini model %s failed, trying fallback: %s", m, e)
+            continue
+
+    return make_unknown(f"Gemini error: {last_error}")
 
 
 def _parse_with_anthropic(text: str, api_key: str, model_name: str) -> Action:
@@ -111,11 +183,12 @@ def _parse_with_anthropic(text: str, api_key: str, model_name: str) -> Action:
         api_key=api_key,
         timeout=8.0,
     )
+    prompt = get_system_prompt()
     response = client.messages.create(
         model=model_name,
         max_tokens=256,
         temperature=0.0,
-        system=SYSTEM_PROMPT,
+        system=prompt,
         messages=[{"role": "user", "content": text}],
     )
     content = response.content[0].text if response.content else ""
@@ -136,7 +209,6 @@ def parse_llm(text: str) -> Action:
     if not cfg.use_llm_fallback:
         return make_unknown("LLM fallback is disabled in settings.")
 
-    # Determine provider
     provider = cfg.llm_provider.lower()
     has_gemini = bool(cfg.gemini_api_key)
     has_anthropic = bool(cfg.anthropic_api_key)

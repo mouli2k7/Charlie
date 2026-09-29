@@ -39,6 +39,25 @@ def main() -> None:
         help="Run continuous 'Hey Charlie' wake word listener in background.",
     )
     parser.add_argument(
+        "--app",
+        "-a",
+        "--menubar",
+        "-m",
+        action="store_true",
+        help="Launch Charlie as a native macOS menu bar app (Phase 4).",
+    )
+    parser.add_argument(
+        "--list-voices",
+        action="store_true",
+        help="List available macOS voices and exit.",
+    )
+    parser.add_argument(
+        "--set-voice",
+        type=str,
+        metavar="VOICE",
+        help="Set the active voice for Charlie (e.g. Samantha, Daniel, Karen, Rishi, Tara).",
+    )
+    parser.add_argument(
         "--version",
         "-v",
         action="version",
@@ -46,6 +65,43 @@ def main() -> None:
     )
 
     args = parser.parse_args()
+
+    # List voices
+    if args.list_voices:
+        from charlie.config import get_config
+        from charlie.output.speaker import list_available_voices
+
+        cfg = get_config()
+        voices = list_available_voices()
+        print(f"Current Voice: {cfg.voice_name}")
+        print("\nRecommended English Voices:")
+        print("  • Samantha (US Female, Siri-like)")
+        print("  • Daniel   (UK Male, Jarvis-like)")
+        print("  • Karen    (Australian Female)")
+        print("  • Rishi    (Indian English Male)")
+        print("  • Tara     (Indian English Female)")
+        print("  • Alex     (Classic macOS Male)")
+        print(f"\nAll Installed Voices ({len(voices)} available):")
+        print("  " + ", ".join(voices[:35]) + ("..." if len(voices) > 35 else ""))
+        sys.exit(0)
+
+    # Set voice
+    if args.set_voice:
+        from charlie.config import save_setting
+        from charlie.output.speaker import speak
+
+        voice = args.set_voice.strip()
+        save_setting("voice_name", voice)
+        print(f"Charlie voice set to: {voice}")
+        speak(f"Hello, my voice is now set to {voice}.", voice=voice)
+        sys.exit(0)
+
+    # Menu bar app mode (Phase 4)
+    if args.app:
+        from charlie.ui.menubar import run_menubar_app
+
+        run_menubar_app()
+        sys.exit(0)
 
     # One-shot text mode
     if args.command:

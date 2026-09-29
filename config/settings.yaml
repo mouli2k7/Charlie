@@ -1,10 +1,12 @@
-speak_responses: true
-volume_step: 10
 brightness_step: 10
-default_browser: null        # e.g. "Google Chrome"
-voice_listen_seconds: 8
+default_browser: null
+llm_provider: gemini
+mic_energy_threshold: 150
+speak_responses: true
+speech_language: en-US
 use_llm_fallback: true
-llm_provider: "gemini"       # "gemini" or "anthropic"
-wake_word: "hey charlie"     # wake word phrase for background listening
-speech_language: "en-US"     # primary recognition language (falls back to en-IN)
-mic_energy_threshold: 150    # microphone sensitivity threshold (lower = more sensitive)
+voice_listen_seconds: 8
+voice_name: Tara
+volume_step: 10
+wake_popup_style: both
+wake_word: hey charlie
