@@ -265,9 +265,15 @@ Complete each phase, run its tests, and confirm it works before moving to the ne
 - Wake word "Hey Charlie" running in the background.
 - Done when odd phrasings like "make it a bit louder" and "can you pull up youtube for me" work.
 
-**Phase 4 — Menu-bar app**
-- `rumps` menu-bar icon with: Talk, Type a command (popup), Mute speech, Quit.
-- Optional: launch at login using a LaunchAgent plist.
+**Phase 4 — Menu-bar app (Completed)**
+- `rumps` menu-bar icon with:
+  - 🎙️ Push-to-Talk voice command
+  - 💬 Interactive modal dialog for typing commands
+  - ⚡ Real-time background "Hey Charlie" wake word toggle
+  - 🔊 Spoken voice responses mute/unmute toggle
+  - 🚀 Launch at login manager via LaunchAgent plist
+  - 🔔 Native macOS Notification Center banner feedback
+- Done when Charlie runs persistently from the menu bar without blocking the GUI.
 
 ---
 
@@ -283,10 +289,14 @@ source .venv/bin/activate
 pip install -r requirements.txt
 
 # 3. Configure
-cp .env.example .env        # add ANTHROPIC_API_KEY if you want the LLM brain
+cp .env.example .env        # add GEMINI_API_KEY for the LLM brain & live search
 
-# 4. Run
-python -m charlie.main
+# 4. Run options
+python -m charlie.main --app        # Launch native macOS menu-bar app (Phase 4)
+python -m charlie.main              # Interactive terminal loop
+python -m charlie.main -c "..."     # One-shot command (e.g. "what's the temperature in Delhi")
+python -m charlie.main -V           # One-shot voice command
+python -m charlie.main -w           # Dedicated background wake-word listener
 ```
 
 **macOS permissions to grant** (System Settings -> Privacy & Security):

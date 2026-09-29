@@ -39,6 +39,14 @@ def main() -> None:
         help="Run continuous 'Hey Charlie' wake word listener in background.",
     )
     parser.add_argument(
+        "--app",
+        "-a",
+        "--menubar",
+        "-m",
+        action="store_true",
+        help="Launch Charlie as a native macOS menu bar app (Phase 4).",
+    )
+    parser.add_argument(
         "--version",
         "-v",
         action="version",
@@ -46,6 +54,13 @@ def main() -> None:
     )
 
     args = parser.parse_args()
+
+    # Menu bar app mode (Phase 4)
+    if args.app:
+        from charlie.ui.menubar import run_menubar_app
+
+        run_menubar_app()
+        sys.exit(0)
 
     # One-shot text mode
     if args.command:
