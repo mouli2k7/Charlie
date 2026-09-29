@@ -6,7 +6,7 @@ speak_responses: true
 speech_language: en-US
 use_llm_fallback: true
 voice_listen_seconds: 8
-voice_name: Daniel
+voice_name: Samantha
 volume_step: 10
 wake_popup_style: both
 wake_word: hey charlie

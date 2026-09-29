@@ -60,6 +60,36 @@ class TestWakeWordPattern(unittest.TestCase):
         self.assertTrue(triggered)
         self.assertEqual(cmd, "launch terminal")
 
+    def test_extract_wake_command_phonetic_hey_char(self) -> None:
+        """Fast Google Speech truncation 'hey char' triggers wake word."""
+        triggered, cmd = extract_wake_command("hey char")
+        self.assertTrue(triggered)
+        self.assertEqual(cmd, "")
+
+    def test_extract_wake_command_phonetic_hi_charli(self) -> None:
+        """Google transcription 'hi charli' triggers wake word."""
+        triggered, cmd = extract_wake_command("hi charli")
+        self.assertTrue(triggered)
+        self.assertEqual(cmd, "")
+
+    def test_extract_wake_command_phonetic_he_char(self) -> None:
+        """Dialect transcription 'he char' triggers wake word."""
+        triggered, cmd = extract_wake_command("he char")
+        self.assertTrue(triggered)
+        self.assertEqual(cmd, "")
+
+    def test_extract_wake_command_trailing_charlie(self) -> None:
+        """Trailing vocative 'open spotify charlie' triggers with extracted command."""
+        triggered, cmd = extract_wake_command("open spotify charlie")
+        self.assertTrue(triggered)
+        self.assertEqual(cmd, "open spotify")
+
+    def test_extract_wake_command_phonetic_with_command(self) -> None:
+        """Phonetic transcription with command 'hey char open safari' extracts cleanly."""
+        triggered, cmd = extract_wake_command("hey char open safari")
+        self.assertTrue(triggered)
+        self.assertEqual(cmd, "open safari")
+
 
 class TestWakeWordListenerLifecycle(unittest.TestCase):
     """Test WakeWordListener start, stop, and dispatch behavior with mocks."""
