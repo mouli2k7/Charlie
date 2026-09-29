@@ -56,9 +56,9 @@ _recognizer.energy_threshold = 150       # Sensitive default for MacBook built-i
 _recognizer.dynamic_energy_threshold = True
 _recognizer.dynamic_energy_adjustment_damping = 0.15
 _recognizer.dynamic_energy_ratio = 1.3
-_recognizer.pause_threshold = 0.5        # Lowered to 0.5s for fast speech completion
-_recognizer.phrase_threshold = 0.15      # Minimum seconds before speech starts
-_recognizer.non_speaking_duration = 0.2
+_recognizer.pause_threshold = 0.38        # 380ms pause threshold for fast speech completion
+_recognizer.phrase_threshold = 0.1        # 100ms speech onset
+_recognizer.non_speaking_duration = 0.15   # Minimal padding
 
 # Prefer the built-in MacBook Pro Microphone
 PREFERRED_MIC_NAME = "MacBook Pro Microphone"
@@ -126,11 +126,16 @@ def _transcribe_audio_candidates(
     with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
         futures = [pool.submit(_query, lang) for lang in languages]
         for f in concurrent.futures.as_completed(futures):
-            for t in f.result():
-                norm = t.lower().strip()
-                if norm and norm not in seen:
-                    seen.add(norm)
-                    candidates.append(t.strip())
+            res = f.result()
+            if res:
+                for t in res:
+                    norm = t.lower().strip()
+                    if norm and norm not in seen:
+                        seen.add(norm)
+                        candidates.append(t.strip())
+                # Return immediately once the fastest engine delivers results
+                if candidates:
+                    break
 
     # Fallback to standard recognize_google if show_all didn't return candidates (e.g. in mocked tests)
     if not candidates:

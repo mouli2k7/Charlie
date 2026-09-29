@@ -333,33 +333,74 @@ def parse_time_and_date(text: str) -> Optional[Action]:
     """Parse time and date inquiries for instant, offline assistant responses."""
     from datetime import datetime
 
-    time_patterns = [
-        r"^(?:what\s+(?:is\s+)?the\s+time|what\s+time\s+is\s+it|tell\s+me\s+the\s+time|current\s+time|time\s+now|what'?s\s+the\s+time)$",
-        r"^(?:what\s+time\s+is\s+it\s+now|do\s+you\s+have\s+the\s+time)$",
-    ]
-    for pat in time_patterns:
-        if re.search(pat, text, re.IGNORECASE):
-            now = datetime.now()
-            time_str = now.strftime("%I:%M %p").lstrip("0")
-            return Action(
-                action="answer",
-                params={"text": f"It is {time_str}."},
-                confidence=1.0,
-            )
+    time_match = bool(
+        re.search(
+            r"\b(?:what\s+(?:is\s+)?(?:the\s+)?time|what\s+time|current\s+time|time\s+now|time\s+is\s+it|tell\s+me\s+(?:the\s+)?time)\b",
+            text,
+            re.IGNORECASE,
+        )
+    )
+    if time_match and not any(k in text for k in ("search", "google", "find")):
+        now = datetime.now()
+        time_str = now.strftime("%I:%M %p").lstrip("0")
+        return Action(
+            action="answer",
+            params={"text": f"It is {time_str}."},
+            confidence=1.0,
+        )
 
-    date_patterns = [
-        r"^(?:what\s+(?:is\s+)?(?:today'?s?\s+)?date|what\s+date\s+is\s+it|what'?s\s+the\s+date|today'?s?\s+date)$",
-        r"^(?:what\s+day\s+is\s+(?:it|today)|what'?s\s+today)$",
-    ]
-    for pat in date_patterns:
-        if re.search(pat, text, re.IGNORECASE):
-            now = datetime.now()
-            date_str = now.strftime("%A, %B %d, %Y")
-            return Action(
-                action="answer",
-                params={"text": f"Today is {date_str}."},
-                confidence=1.0,
-            )
+    date_match = bool(
+        re.search(
+            r"\b(?:what\s+(?:is\s+)?(?:the\s+)?date|today'?s?\s+date|date\s+today|date\s+is\s+it|what\s+day\s+is\s+(?:it|today)|which\s+day\s+is\s+it)\b",
+            text,
+            re.IGNORECASE,
+        )
+    )
+    if date_match and not any(k in text for k in ("search", "google", "find")):
+        now = datetime.now()
+        date_str = now.strftime("%A, %B %d, %Y")
+        return Action(
+            action="answer",
+            params={"text": f"Today is {date_str}."},
+            confidence=1.0,
+        )
+
+    return None
+
+
+def parse_conversational(text: str) -> Optional[Action]:
+    """Parse common identity and conversational pleasantries for instant offline responses."""
+    # Identity: "who are you", "what is your name", "what are you"
+    if re.search(r"\b(?:who\s+are\s+you|what\s+(?:is|'s)\s+your\s+name|what\s+are\s+you)\b", text, re.IGNORECASE):
+        return Action(
+            action="answer",
+            params={"text": "I am Charlie, your macOS personal assistant."},
+            confidence=1.0,
+        )
+
+    # How are you: "how are you", "how are you doing", "how's it going"
+    if re.search(r"\b(?:how\s+are\s+you|how\s+are\s+you\s+doing|how'?s\s+it\s+going)\b", text, re.IGNORECASE):
+        return Action(
+            action="answer",
+            params={"text": "I'm doing great and ready to help you!"},
+            confidence=1.0,
+        )
+
+    # Simple greetings: "hello", "hi", "hey"
+    if re.fullmatch(r"(?:hello|hi|hey|good\s+morning|good\s+afternoon|good\s+evening)", text, re.IGNORECASE):
+        return Action(
+            action="answer",
+            params={"text": "Hello! How can I help you today?"},
+            confidence=1.0,
+        )
+
+    # Gratitude: "thank you", "thanks"
+    if re.fullmatch(r"(?:thank\s+you|thanks|thank\s+you\s+so\s+much)", text, re.IGNORECASE):
+        return Action(
+            action="answer",
+            params={"text": "You're welcome!"},
+            confidence=1.0,
+        )
 
     return None
 
@@ -413,7 +454,12 @@ def parse_rules(text: str) -> Action:
     if action:
         return validate_action(action)
 
-    # 0.1 Live Weather & Temperature (Instant live answer)
+    # 0.1 Conversational Pleasantries (Instant offline answer)
+    action = parse_conversational(cleaned)
+    if action:
+        return validate_action(action)
+
+    # 0.2 Live Weather & Temperature (Instant live answer)
     action = parse_weather(cleaned)
     if action:
         return validate_action(action)

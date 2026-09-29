@@ -130,8 +130,16 @@ def _parse_with_gemini(text: str, api_key: str, model_name: str) -> Action:
         max_output_tokens=150,
     )
 
-    # Check for live internet context (weather, real-time facts, prices)
-    live_ctx = fetch_live_context(text)
+    # Check for live internet context only when needed (weather or breaking news)
+    from charlie.brain.internet import _WEATHER_GENERAL_RE, fetch_live_context
+
+    live_ctx: Optional[str] = None
+    if _WEATHER_GENERAL_RE.search(text) or any(k in text.lower() for k in ("breaking news", "live score")):
+        try:
+            live_ctx = fetch_live_context(text)
+        except Exception:
+            live_ctx = None
+
     user_payload = text
     if live_ctx:
         user_payload = (
@@ -142,8 +150,8 @@ def _parse_with_gemini(text: str, api_key: str, model_name: str) -> Action:
         )
 
     candidate_models = [
-        model_name,
         "gemini-3.5-flash-lite",
+        model_name,
         "gemini-3.1-flash-lite",
         "gemini-3.8-flash",
     ]
@@ -211,7 +219,7 @@ def parse_llm(text: str) -> Action:
 
     try:
         if (provider == "gemini" and has_gemini) or (has_gemini and not has_anthropic):
-            model = cfg.charlie_model if "gemini" in cfg.charlie_model.lower() else "gemini-3.1-flash-lite"
+            model = cfg.charlie_model if "gemini" in cfg.charlie_model.lower() else "gemini-3.5-flash-lite"
             return _parse_with_gemini(text, cfg.gemini_api_key, model)  # type: ignore[arg-type]
         elif has_anthropic:
             model = cfg.charlie_model if "claude" in cfg.charlie_model.lower() else "claude-sonnet-5"
