@@ -31,15 +31,24 @@ _WEATHER_GENERAL_RE = re.compile(
     re.IGNORECASE,
 )
 
-# Search trigger keywords
+# Search trigger keywords for live internet information
 _SEARCH_TRIGGERS = [
-    r"\b(?:cost|price|rate)\s+of\b",
-    r"\b(?:who\s+won|score\s+of|match\s+between)\b",
-    r"\b(?:latest|recent|current)\s+(?:news|update|events?|status)\b",
-    r"\b(?:release\s+date|when\s+is\s+the\s+next)\b",
-    r"\b(?:stock\s+price|net\s+worth)\b",
+    r"\b(?:cost|price|rate|pricing)\s+of\b",
+    r"\b(?:who\s+won|score\s+of|match\s+between|who\s+is\s+winning)\b",
+    r"\b(?:latest|recent|current|new|top|best)\s+(?:phones?|smartphones?|gadgets?|laptops?|models?|news|update|events?|status|movies?)\b",
+    r"\b(?:release\s+date|when\s+is\s+the\s+next|launch\s+date)\b",
+    r"\b(?:stock\s+price|net\s+worth|market\s+cap|crypto|bitcoin)\b",
+    r"\b(?:phones?|smartphones?|iphone|samsung|galaxy|pixel|oneplus|laptops?|macbook)\b",
+    r"\b(?:search\s+(?:for|about|on\s+google)?|google|look\s+up|find\s+out)\b",
+    r"\b(?:vs|versus|compare|comparison|specs|specifications)\b",
+    r"^(?:who|what|when|where|why|how|which)\b",
 ]
 _SEARCH_TRIGGER_RE = re.compile("|".join(_SEARCH_TRIGGERS), re.IGNORECASE)
+
+_FOREX_RE = re.compile(
+    r"\b(?:exchange|forex|currency|rates?|dollar|dollars|rupee|rupees|inr|usd|eur|euro|euros|gbp|pound|pounds|cad|aed|yen|jpy)\b",
+    re.IGNORECASE,
+)
 
 
 def extract_weather_location(text: str) -> Optional[str]:
@@ -72,9 +81,8 @@ def get_live_weather(location: Optional[str] = None) -> Optional[str]:
             url,
             headers={"User-Agent": "curl/7.68.0"},
         )
-        with urllib.request.urlopen(req, timeout=3.0, context=_SSL_CONTEXT) as resp:
+        with urllib.request.urlopen(req, timeout=2.5, context=_SSL_CONTEXT) as resp:
             data = resp.read().decode("utf-8").strip()
-            # If wttr.in returns html error or 404 text
             if data and not data.startswith("<") and "unknown location" not in data.lower():
                 return data
     except Exception as err:
@@ -82,31 +90,73 @@ def get_live_weather(location: Optional[str] = None) -> Optional[str]:
     return None
 
 
-def search_web_snippets(query: str, max_results: int = 2) -> Optional[str]:
-    """Fetch concise web search snippets using DuckDuckGo.
+def get_live_forex(text: str) -> Optional[str]:
+    """Fetch real-time live currency exchange rates from open exchange API."""
+    if not _FOREX_RE.search(text):
+        return None
+    try:
+        req = urllib.request.Request(
+            "https://open.er-api.com/v6/latest/USD",
+            headers={"User-Agent": "Charlie/1.0"},
+        )
+        with urllib.request.urlopen(req, timeout=2.0, context=_SSL_CONTEXT) as resp:
+            import json
+            data = json.loads(resp.read().decode())
+            rates = data.get("rates", {})
+            inr = rates.get("INR")
+            eur = rates.get("EUR")
+            gbp = rates.get("GBP")
+            aed = rates.get("AED")
+            cad = rates.get("CAD")
+            if inr and eur and gbp:
+                return (
+                    f"Live Real-Time Forex Rates (USD Base):\n"
+                    f"1 USD = {inr:.2f} INR\n"
+                    f"1 EUR = {inr/eur:.2f} INR (1 USD = {eur:.2f} EUR)\n"
+                    f"1 GBP = {inr/gbp:.2f} INR (1 USD = {gbp:.2f} GBP)\n"
+                    f"1 CAD = {inr/cad:.2f} INR\n"
+                    f"1 AED = {inr/aed:.2f} INR"
+                )
+    except Exception as err:
+        logger.debug("Failed to fetch live forex rates: %s", err)
+    return None
 
-    Returns concatenated snippets or None on failure.
-    """
+
+def search_web_snippets(query: str, max_results: int = 2) -> Optional[str]:
+    """Fetch concise web search snippets using DuckDuckGo with fast API backends."""
+    clean_q = re.sub(
+        r"^(?:search\s+(?:for\s+|about\s+|on\s+google\s+(?:for\s+)?)?|google\s+|look\s+up\s+|tell\s+me\s+about\s+)",
+        "",
+        query.strip(),
+        flags=re.IGNORECASE,
+    ).strip()
+    if not clean_q:
+        clean_q = query.strip()
+
     try:
         from ddgs import DDGS
-        with DDGS(timeout=3.0) as ddgs:
-            results = list(ddgs.text(query, max_results=max_results))
-            if results:
-                snippets = []
-                for r in results:
-                    title = r.get("title", "").strip()
-                    body = r.get("body", "").strip()
-                    if body:
-                        snippets.append(f"{title}: {body}" if title else body)
-                if snippets:
-                    return "\n".join(snippets[:max_results])
+        for backend in ("api", "lite"):
+            try:
+                with DDGS(timeout=2.0) as ddgs:
+                    results = list(ddgs.text(clean_q, backend=backend, max_results=max_results))
+                    if results:
+                        snippets = []
+                        for r in results:
+                            title = r.get("title", "").strip()
+                            body = r.get("body", "").strip()
+                            if body:
+                                snippets.append(f"{title}: {body}" if title else body)
+                        if snippets:
+                            return "\n".join(snippets[:max_results])
+            except Exception:
+                continue
     except Exception as err:
         logger.debug("Failed to fetch web search snippets: %s", err)
     return None
 
 
 def fetch_live_context(user_text: str) -> Optional[str]:
-    """Analyze query and fetch relevant live internet information if needed."""
+    """Analyze query and fetch relevant live internet information in real-time."""
     # 1. Weather / Temperature check
     if _WEATHER_GENERAL_RE.search(user_text):
         loc = extract_weather_location(user_text)
@@ -114,9 +164,14 @@ def fetch_live_context(user_text: str) -> Optional[str]:
         if weather_info:
             return f"Current Live Weather: {weather_info}"
 
-    # 2. Real-time web search check
+    # 2. Live Forex / Currency check
+    forex_info = get_live_forex(user_text)
+    if forex_info:
+        return forex_info
+
+    # 3. Real-time web search check (phones, gadgets, news, prices, sports)
     if _SEARCH_TRIGGER_RE.search(user_text):
-        snippets = search_web_snippets(user_text)
+        snippets = search_web_snippets(user_text, max_results=2)
         if snippets:
             return f"Live Web Search Information:\n{snippets}"
 

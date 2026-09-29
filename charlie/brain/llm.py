@@ -42,13 +42,19 @@ def _get_gemini_client(api_key: str) -> Any:
 
 def get_system_prompt() -> str:
     """Generate system prompt dynamically populated with current local time."""
-    now_str = datetime.now().strftime("%A, %B %d, %Y at %I:%M %p").lstrip("0")
+    now = datetime.now()
+    now_str = now.strftime("%A, %B %d, %Y at %I:%M %p").lstrip("0")
+    year_str = now.strftime("%Y")
     return f"""You are Charlie, an intelligent macOS assistant and personal companion with real-time internet search capability.
 Current local macOS system time: {now_str}.
-Always answer user questions directly and naturally. Never say that you do not have internet access or live data; use any live internet context provided or your internal knowledge.
+Current year: {year_str}.
+Always answer user questions directly, naturally, and with up-to-date live information. Never say that you do not have internet access or live data; use the live real-time internet data provided below or your knowledge.
 
-Your job is to convert user commands or questions into structured JSON actions matching our whitelist.
-You must reply with ONLY a single JSON object. Do not include markdown code fences, commentary, or text outside the JSON.
+CRITICAL INSTRUCTION: When the user asks any question, asks for search information, prices, exchange rates, facts, phones/gadgets, or knowledge:
+ALWAYS synthesize and analyze the live data into a concise, direct, helpful answer suitable for speaking aloud (1-2 clear sentences).
+DO NOT return a 'web_search' action that tells the user to open Google and read it themselves!
+Analyze the search results for the user and speak the answer using the 'answer' action!
+Only use 'web_search' if the user explicitly asks to open a specific website like Amazon, Flipkart, or YouTube to browse products.
 
 Allowed Whitelist Actions and Parameters:
 1. open_app: {{"app": "Exact or Common Application Name"}}
@@ -58,7 +64,7 @@ Allowed Whitelist Actions and Parameters:
    Example: "quit chrome" -> {{"action": "close_app", "params": {{"app": "Google Chrome"}}, "confidence": 0.95}}
 
 3. web_search: {{"site": "google"|"amazon"|"flipkart"|"youtube"|"myntra"|"meesho", "query": "search query", "browser": null or "Chrome"|"Safari"}}
-   Use when the user explicitly asks to search the web or open a browser search.
+   Use ONLY when the user explicitly asks to open a shopping/video website or specific browser.
    Example: "search mechanical keyboard on amazon" -> {{"action": "web_search", "params": {{"site": "amazon", "query": "mechanical keyboard", "browser": null}}, "confidence": 0.95}}
 
 4. open_url: {{"url": "https://..." or null, "site": "site_name" or null, "browser": null}}
@@ -86,9 +92,10 @@ Allowed Whitelist Actions and Parameters:
 11. media_control: {{"command": "play_pause"|"next"|"previous"}}
     Example: "skip to the next track" -> {{"action": "media_control", "params": {{"command": "next"}}, "confidence": 0.95}}
 
-12. answer: {{"text": "Concise, natural answer (1-2 sentences suitable for text-to-speech)"}}
-    Use this whenever the user asks any question, asks for prices/costs, facts, explanations, time, date, weather info, math, or conversational chat.
+12. answer: {{"text": "Concise, natural, up-to-date answer (1-2 sentences suitable for text-to-speech)"}}
+    Use this whenever the user asks any question, asks for prices/costs, exchange rates, phones/gadgets, facts, explanations, time, date, weather info, math, or conversational chat.
     Example: "what is the cost of iPhone 16" -> {{"action": "answer", "params": {{"text": "The iPhone 16 starts at $799, while the iPhone 16 Pro starts at $999."}}, "confidence": 0.98}}
+    Example: "what is the exchange rate of dollar to rupee" -> {{"action": "answer", "params": {{"text": "The current exchange rate is approximately 96 rupees per US dollar."}}, "confidence": 0.98}}
     Example: "who is the CEO of Google" -> {{"action": "answer", "params": {{"text": "Sundar Pichai is the CEO of Google and Alphabet."}}, "confidence": 0.98}}
     Example: "tell me a joke" -> {{"action": "answer", "params": {{"text": "Why do programmers prefer dark mode? Because light attracts bugs!"}}, "confidence": 0.98}}
 
@@ -130,23 +137,15 @@ def _parse_with_gemini(text: str, api_key: str, model_name: str) -> Action:
         max_output_tokens=150,
     )
 
-    # Check for live internet context only when needed (weather or breaking news)
-    from charlie.brain.internet import _WEATHER_GENERAL_RE, fetch_live_context
-
-    live_ctx: Optional[str] = None
-    if _WEATHER_GENERAL_RE.search(text) or any(k in text.lower() for k in ("breaking news", "live score")):
-        try:
-            live_ctx = fetch_live_context(text)
-        except Exception:
-            live_ctx = None
-
+    # Check for live internet context (real-time forex, weather, or live search)
+    live_ctx = fetch_live_context(text)
     user_payload = text
     if live_ctx:
         user_payload = (
             f"{text}\n\n"
-            f"[Live Internet Context retrieved just now]:\n"
+            f"[Live Real-Time Internet Data retrieved just now]:\n"
             f"{live_ctx}\n"
-            f"Use this live information to provide an accurate, up-to-date answer."
+            f"Analyze and use this live information to provide an accurate, up-to-date spoken answer."
         )
 
     candidate_models = [
