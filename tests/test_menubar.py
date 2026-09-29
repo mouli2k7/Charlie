@@ -114,6 +114,23 @@ class TestMenuBarApp(unittest.TestCase):
         self.assertEqual(self.app.title, "⚡ Charlie")
         self.assertIn("50%", self.app.last_result_item.title)
 
+    @patch("charlie.ui.menubar.save_setting")
+    @patch("charlie.ui.menubar.output_response")
+    @patch("rumps.notification")
+    def test_on_select_voice(
+        self,
+        mock_notif: MagicMock,
+        mock_out: MagicMock,
+        mock_save: MagicMock,
+    ) -> None:
+        target_item = self.app.voice_items["Daniel"]
+        self.app.on_select_voice(target_item)
+        self.assertEqual(self.app.cfg.voice_name, "Daniel")
+        self.assertEqual(target_item.state, 1)
+        mock_save.assert_called_once_with("voice_name", "Daniel")
+        mock_notif.assert_called_once()
+        mock_out.assert_called_once()
+
     @patch("rumps.quit_application")
     @patch("charlie.ui.menubar.stop_wake_word_listener")
     def test_on_quit(

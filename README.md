@@ -292,12 +292,18 @@ pip install -r requirements.txt
 cp .env.example .env        # add GEMINI_API_KEY for the LLM brain & live search
 
 # 4. Run options
-python -m charlie.main --app        # Launch native macOS menu-bar app (Phase 4)
-python -m charlie.main              # Interactive terminal loop
-python -m charlie.main -c "..."     # One-shot command (e.g. "what's the temperature in Delhi")
-python -m charlie.main -V           # One-shot voice command
-python -m charlie.main -w           # Dedicated background wake-word listener
+python -m charlie.main --app               # Launch native macOS menu-bar app
+python -m charlie.main                     # Interactive terminal loop
+python -m charlie.main -c "..."            # One-shot command (e.g. "what's the temperature in Delhi")
+python -m charlie.main -V                  # One-shot voice command
+python -m charlie.main -w                  # Dedicated background wake-word listener
+python -m charlie.main --list-voices       # List installed macOS voices
+python -m charlie.main --set-voice Daniel  # Change Charlie's active voice
 ```
+
+> **Voice & Wake Detection:**
+> - When "Hey Charlie" is detected, an on-screen popup appears and an audible chime plays to confirm Charlie is listening.
+> - Voice can be changed in the Menu Bar app (`🗣️ Charlie Voice`), CLI (`--set-voice`), or `config/settings.yaml`.
 
 **macOS permissions to grant** (System Settings -> Privacy & Security):
 - **Microphone** -> for voice input

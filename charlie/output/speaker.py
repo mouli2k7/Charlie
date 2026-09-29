@@ -11,7 +11,32 @@ from typing import Any, Optional
 from charlie.config import get_config
 
 
-def speak(text: str, non_blocking: bool = True) -> None:
+def list_available_voices() -> list[str]:
+    """Return list of installed macOS voices."""
+    if not shutil.which("say"):
+        return []
+    try:
+        proc = subprocess.run(["say", "-v", "?"], capture_output=True, text=True, check=False)
+        voices = []
+        for line in proc.stdout.splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            parts = line.split()
+            if parts:
+                voice_name = parts[0]
+                if voice_name not in voices:
+                    voices.append(voice_name)
+        return voices
+    except Exception:
+        return []
+
+
+def speak(
+    text: str,
+    non_blocking: bool = True,
+    voice: Optional[str] = None,
+) -> None:
     """Speak text using the macOS `say` command if enabled in configuration."""
     if not text or not text.strip():
         return
@@ -25,7 +50,12 @@ def speak(text: str, non_blocking: bool = True) -> None:
 
     try:
         clean_text = text.strip()
-        cmd = ["say", clean_text]
+        voice_to_use = voice or cfg.voice_name
+        cmd = ["say"]
+        if voice_to_use:
+            cmd.extend(["-v", voice_to_use])
+        cmd.append(clean_text)
+
         if non_blocking:
             subprocess.Popen(
                 cmd,
@@ -81,6 +111,7 @@ def output_response(
     action_name: Optional[str] = None,
     speak_it: bool = True,
     speak_param: Optional[bool] = None,
+    voice: Optional[str] = None,
     **kwargs: Any,
 ) -> None:
     """Print the assistant response in clean B&W style and speak confirmation."""
@@ -95,4 +126,4 @@ def output_response(
         print(f"Charlie: {message}")
 
     if speak_it:
-        speak(message)
+        speak(message, voice=voice)

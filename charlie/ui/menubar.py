@@ -19,7 +19,7 @@ import rumps
 
 from charlie import __version__
 from charlie.brain import parse
-from charlie.config import get_config
+from charlie.config import get_config, save_setting
 from charlie.inputs.wake_word import (
     get_wake_word_listener,
     start_wake_word_listener,
@@ -81,6 +81,23 @@ class CharlieMenuBarApp(rumps.App):
             key="q",
         )
 
+        # Voice selector submenu
+        current_voice = self.cfg.voice_name or "Samantha"
+        self.voice_menu = rumps.MenuItem("🗣️ Charlie Voice")
+        self.voice_items = {}
+        for voice_key, voice_label in [
+            ("Samantha", "Samantha (US Female)"),
+            ("Daniel", "Daniel (UK Male)"),
+            ("Karen", "Karen (Australian)"),
+            ("Rishi", "Rishi (Indian English)"),
+            ("Tara", "Tara (Indian English)"),
+            ("Alex", "Alex (Classic Mac)"),
+        ]:
+            item = rumps.MenuItem(voice_label, callback=self.on_select_voice)
+            item.state = 1 if voice_key.lower() == current_voice.lower() else 0
+            self.voice_menu.add(item)
+            self.voice_items[voice_key] = item
+
         # Initial checkmark states
         listener = get_wake_word_listener()
         self.wake_word_item.state = 1 if listener.is_running else 0
@@ -97,6 +114,7 @@ class CharlieMenuBarApp(rumps.App):
             rumps.separator,
             self.wake_word_item,
             self.speech_item,
+            self.voice_menu,
             rumps.separator,
             self.last_result_item,
             self.login_item,
@@ -177,6 +195,25 @@ class CharlieMenuBarApp(rumps.App):
         sender.state = 1 if new_state else 0
         msg = "Charlie will launch automatically at login." if new_state else "Launch at login disabled."
         rumps.notification("Charlie", "Launch at Login", msg)
+
+    def on_select_voice(self, sender: rumps.MenuItem) -> None:
+        """Handle voice selection from submenu."""
+        chosen_key = "Samantha"
+        for k, item in self.voice_items.items():
+            if item is sender or item.title == sender.title:
+                chosen_key = k
+                item.state = 1
+            else:
+                item.state = 0
+
+        self.cfg.voice_name = chosen_key
+        save_setting("voice_name", chosen_key)
+        rumps.notification("Charlie Voice", f"Voice set to {chosen_key}", f"Switched active voice to {chosen_key}.")
+        output_response(
+            f"Hello, my voice is now set to {chosen_key}.",
+            speak_it=self._speech_enabled,
+            voice=chosen_key,
+        )
 
     def on_quit(self, _sender: Optional[rumps.MenuItem] = None) -> None:
         """Gracefully shut down background threads and quit."""

@@ -174,6 +174,13 @@ class WakeWordListener:
 
                     print(f"\n[Wake Word] Triggered! Heard: '{text}'")
 
+                    # Trigger visual on-screen popup and audio chime
+                    try:
+                        from charlie.ui.popup import show_wake_popup
+                        show_wake_popup(command=cmd)
+                    except Exception as popup_err:
+                        logger.debug("Failed to show wake popup: %s", popup_err)
+
                     if cmd:
                         self.on_command(cmd)
                     else:
