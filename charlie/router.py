@@ -45,7 +45,7 @@ HANDLER_MAP: Dict[str, ActionHandler] = {
 def dispatch(action: Action) -> Tuple[bool, str]:
     """Execute the given action safely and return (success, message)."""
     if action.action == "unknown":
-        reason = action.params.get("reason", "I didn't understand that command.")
+        reason = action.params.get("reason") or "I didn't understand that command."
         return False, reason
 
     handler = HANDLER_MAP.get(action.action)

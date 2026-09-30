@@ -50,9 +50,12 @@ APP_ALIASES: Dict[str, str] = {
     "telegram": "Telegram",
     "xcode": "Xcode",
     "keynote": "Keynote",
-    "pages": "Pages",
     "numbers": "Numbers",
     "photoshop": "Adobe Photoshop",
+    "brave": "Brave Browser",
+    "edge": "Microsoft Edge",
+    "zoom": "zoom.us",
+    "camera": "Photo Booth",
 }
 
 
@@ -95,6 +98,8 @@ class AppIndex:
             return None
 
         clean_query = query.strip()
+        if clean_query.lower().endswith(".app"):
+            clean_query = clean_query[:-4].strip()
         lower_query = clean_query.lower()
 
         # 1. Exact case-insensitive match

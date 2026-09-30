@@ -57,9 +57,9 @@ def show_wake_popup(
         msg_text = "Listening for your command..."
         dlg_text = "⚡ Hey Charlie recognized!\n\nListening for your command..."
 
-    # Escape quotes for AppleScript
-    safe_msg = msg_text.replace('"', '\\"').replace("'", "\\'")
-    safe_dlg = dlg_text.replace('"', '\\"')
+    # Escape backslashes and double quotes for AppleScript string literals
+    safe_msg = msg_text.replace('\\', '\\\\').replace('"', '\\"')
+    safe_dlg = dlg_text.replace('\\', '\\\\').replace('"', '\\"')
 
     # 2. Native macOS banner notification (top-right slide-in)
     if popup_style in ("both", "banner"):

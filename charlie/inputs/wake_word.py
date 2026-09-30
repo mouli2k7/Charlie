@@ -19,6 +19,7 @@ from charlie.brain import parse
 from charlie.config import get_config
 from charlie.inputs.voice_input import (
     _get_mic_index,
+    _select_best_candidate,
     _strip_wake_prefix,
     _transcribe_audio,
     _transcribe_audio_candidates,
@@ -33,7 +34,8 @@ logger = logging.getLogger(__name__)
 WAKE_NAME_VARIANTS = (
     r"(?:charlie|charley|charly|charli|charlee|charle|charl|char|"
     r"sharlie|sharli|sharly|cherry|jolly|curly|carly|karli|karly|"
-    r"harley|chaley|chali|challie)"
+    r"harley|chaley|chali|challie|shirley|surely|cholie|charles|"
+    r"chilli|chilly|charlies|chaarli)"
 )
 GREETING_VARIANTS = r"(?:hey|hay|he|hi|hai|hello|hallo|ok|okay|yo|ay|a|eh|uh|um|so|please|can\s+you)?"
 
@@ -43,7 +45,7 @@ def build_wake_pattern(wake_word: str = "hey charlie") -> re.Pattern:
     clean = wake_word.strip().lower()
     if "charlie" in clean:
         pattern_str = (
-            rf"^\s*(?:{GREETING_VARIANTS}\s+)?{WAKE_NAME_VARIANTS}\b[,:\s-]*(.*)$"
+            rf"^\s*(?:{GREETING_VARIANTS}[,.\s]+)?{WAKE_NAME_VARIANTS}\b[,:\s-]*(.*)$"
         )
     else:
         escaped = re.escape(clean)
@@ -99,9 +101,9 @@ class WakeWordListener:
         self._recognizer.dynamic_energy_threshold = True
         self._recognizer.dynamic_energy_adjustment_damping = 0.15
         self._recognizer.dynamic_energy_ratio = 1.3
-        self._recognizer.pause_threshold = 0.35       # 350ms silence cut-off for fast wake detection
+        self._recognizer.pause_threshold = 0.45       # 450ms silence cut-off for balanced wake detection
         self._recognizer.phrase_threshold = 0.1      # Instant speech onset detection
-        self._recognizer.non_speaking_duration = 0.15  # Minimal padding to eliminate latency
+        self._recognizer.non_speaking_duration = 0.2  # Balanced padding to prevent cutoffs
 
     @property
     def is_running(self) -> bool:
@@ -216,16 +218,19 @@ class WakeWordListener:
                         print("[Wake Word] Waiting for your command...")
                         try:
                             # Re-use the existing open microphone stream without reopening
+                            self._recognizer.pause_threshold = 0.55
                             follow_up_audio = self._recognizer.listen(
                                 source,
                                 timeout=5.0,
                                 phrase_time_limit=7.0,
                             )
+                            self._recognizer.pause_threshold = 0.45
                             follow_candidates = _transcribe_audio_candidates(
                                 follow_up_audio, recognizer=self._recognizer
                             )
                             if follow_candidates:
-                                follow_cmd = _strip_wake_prefix(follow_candidates[0])
+                                best_cand = _select_best_candidate(follow_candidates)
+                                follow_cmd = _strip_wake_prefix(best_cand or follow_candidates[0])
                                 if follow_cmd:
                                     self.on_command(follow_cmd)
                         except sr.WaitTimeoutError:

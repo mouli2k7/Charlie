@@ -32,6 +32,11 @@ class TestWakePopup(unittest.TestCase):
         show_wake_popup(command="open terminal", style="none")
         mock_popen.assert_not_called()
 
+    @patch("subprocess.Popen")
+    def test_show_wake_popup_with_apostrophes_and_quotes(self, mock_popen: MagicMock) -> None:
+        show_wake_popup(command="what's the time and don't mute \"music\"", style="both")
+        self.assertGreaterEqual(mock_popen.call_count, 2)
+
 
 if __name__ == "__main__":
     unittest.main()
