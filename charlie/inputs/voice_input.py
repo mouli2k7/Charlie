@@ -56,9 +56,9 @@ _recognizer.energy_threshold = 150       # Sensitive default for MacBook built-i
 _recognizer.dynamic_energy_threshold = True
 _recognizer.dynamic_energy_adjustment_damping = 0.15
 _recognizer.dynamic_energy_ratio = 1.3
-_recognizer.pause_threshold = 0.38        # 380ms pause threshold for fast speech completion
+_recognizer.pause_threshold = 0.55        # 550ms pause threshold for natural speech cadence
 _recognizer.phrase_threshold = 0.1        # 100ms speech onset
-_recognizer.non_speaking_duration = 0.15   # Minimal padding
+_recognizer.non_speaking_duration = 0.25   # Natural speech pause padding
 
 # Prefer the built-in MacBook Pro Microphone
 PREFERRED_MIC_NAME = "MacBook Pro Microphone"
@@ -67,12 +67,13 @@ PREFERRED_MIC_NAME = "MacBook Pro Microphone"
 WAKE_NAME_VARIANTS = (
     r"(?:charlie|charley|charly|charli|charlee|charle|charl|char|"
     r"sharlie|sharli|sharly|cherry|jolly|curly|carly|karli|karly|"
-    r"harley|chaley|chali|challie)"
+    r"harley|chaley|chali|challie|shirley|surely|cholie|charles|"
+    r"chilli|chilly|charlies|chaarli)"
 )
 GREETING_VARIANTS = r"(?:hey|hay|he|hi|hai|hello|hallo|ok|okay|yo|ay|a|eh|uh|um|so|please|can\s+you)?"
 
 STRIP_PREFIXES = re.compile(
-    rf"^\s*(?:{GREETING_VARIANTS}\s+)?{WAKE_NAME_VARIANTS}[,:\s-]*",
+    rf"^\s*(?:{GREETING_VARIANTS}[,.\s]+)?{WAKE_NAME_VARIANTS}[,:\s-]*",
     re.IGNORECASE,
 )
 
@@ -124,18 +125,24 @@ def _transcribe_audio_candidates(
     seen: set[str] = set()
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
-        futures = [pool.submit(_query, lang) for lang in languages]
-        for f in concurrent.futures.as_completed(futures):
-            res = f.result()
-            if res:
-                for t in res:
-                    norm = t.lower().strip()
-                    if norm and norm not in seen:
-                        seen.add(norm)
-                        candidates.append(t.strip())
-                # Return immediately once the fastest engine delivers results
-                if candidates:
-                    break
+        future_to_lang = {pool.submit(_query, lang): lang for lang in languages}
+        done, _ = concurrent.futures.wait(future_to_lang.keys(), timeout=1.5)
+
+        # Collect results prioritizing primary language candidates
+        results_by_lang = {}
+        for f in done:
+            lang = future_to_lang[f]
+            try:
+                results_by_lang[lang] = f.result()
+            except Exception:
+                results_by_lang[lang] = []
+
+        for lang in languages:
+            for t in results_by_lang.get(lang, []):
+                norm = t.lower().strip()
+                if norm and norm not in seen:
+                    seen.add(norm)
+                    candidates.append(t.strip())
 
     # Fallback to standard recognize_google if show_all didn't return candidates (e.g. in mocked tests)
     if not candidates:
@@ -154,13 +161,48 @@ def _transcribe_audio_candidates(
     return candidates
 
 
+def _select_best_candidate(candidates: list[str]) -> Optional[str]:
+    """Select the best candidate transcription using rule confidence scoring."""
+    if not candidates:
+        return None
+    if len(candidates) == 1:
+        return candidates[0]
+
+    try:
+        from charlie.actions.apps import APP_ALIASES, get_app_index
+        from charlie.brain.rules import parse_rules
+
+        app_idx = get_app_index()
+        best_cand = candidates[0]
+        best_score = -1.0
+
+        for cand in candidates:
+            action = parse_rules(cand)
+            score = action.confidence if action.action != "unknown" else 0.0
+
+            # Give a bonus to verified installed apps or known aliases
+            if action.action in ("open_app", "close_app"):
+                app_name = action.params.get("app", "").strip().lower()
+                if app_name in app_idx.apps or app_name in APP_ALIASES:
+                    score += 0.05
+
+            if score > best_score:
+                best_score = score
+                best_cand = cand
+                if score >= 0.95:
+                    break
+        return best_cand
+    except Exception:
+        return candidates[0]
+
+
 def _transcribe_audio(
     audio: sr.AudioData,
     recognizer: Optional[sr.Recognizer] = None,
 ) -> Optional[str]:
-    """Transcribe audio with fast multi-language parallel retrieval."""
+    """Transcribe audio with fast multi-language parallel retrieval and N-best rescoring."""
     candidates = _transcribe_audio_candidates(audio, recognizer=recognizer)
-    return candidates[0] if candidates else None
+    return _select_best_candidate(candidates)
 
 
 def listen_and_transcribe(
@@ -182,9 +224,17 @@ def listen_and_transcribe(
 
     # Sync energy threshold with configuration
     _recognizer.energy_threshold = cfg.mic_energy_threshold
+    _recognizer.pause_threshold = 0.55
 
     try:
         with sr.Microphone(device_index=mic_index) as source:
+            # Fast ambient noise calibration to adapt to current room noise
+            try:
+                _recognizer.adjust_for_ambient_noise(source, duration=0.2)
+                _recognizer.energy_threshold = max(60, min(_recognizer.energy_threshold, 250))
+            except Exception:
+                pass
+
             print("Listening... (speak now)")
             audio = _recognizer.listen(
                 source,

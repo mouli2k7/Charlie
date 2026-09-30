@@ -49,26 +49,29 @@ def _post_quartz_key(key_code: int) -> bool:
 
 
 def _applescript_media_fallback(command: str) -> bool:
-    """Fallback to AppleScript for common media players if Quartz is restricted."""
-    script_cmd = {
-        "play_pause": 'tell application "Spotify" to playpause',
-        "next": 'tell application "Spotify" to next track',
-        "previous": 'tell application "Spotify" to previous track',
-    }.get(command)
-
-    if not script_cmd:
+    """Fallback to AppleScript for common media players (Spotify, Apple Music) if Quartz is restricted."""
+    cmds = {
+        "play_pause": [("Spotify", "playpause"), ("Music", "playpause")],
+        "next": [("Spotify", "next track"), ("Music", "next track")],
+        "previous": [("Spotify", "previous track"), ("Music", "previous track")],
+    }
+    targets = cmds.get(command)
+    if not targets:
         return False
 
-    try:
-        res = subprocess.run(
-            ["osascript", "-e", script_cmd],
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-        return res.returncode == 0
-    except Exception:
-        return False
+    for app_name, app_cmd in targets:
+        try:
+            res = subprocess.run(
+                ["osascript", "-e", f'tell application "{app_name}" to {app_cmd}'],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            if res.returncode == 0:
+                return True
+        except Exception:
+            pass
+    return False
 
 
 def media_control(command: Literal["play_pause", "next", "previous"]) -> tuple[bool, str]:
