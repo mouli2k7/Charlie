@@ -49,7 +49,7 @@ def test_dispatch_web_search(mock_search):
 
 @patch("charlie.actions.web.open_url")
 def test_dispatch_open_url(mock_open_url):
-    mock_open_url.return_value = (True, "Opened https://github.com.")
+    mock_open_url.return_value = (True, "Opening GitHub.")
     action = Action(
         action="open_url",
         params={"url": "https://github.com", "site": None, "browser": None},

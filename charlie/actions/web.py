@@ -80,6 +80,73 @@ def open_browser_command(url: str, browser: Optional[str] = None) -> list[str]:
     return ["open", url]
 
 
+KNOWN_SITE_NAMES = {
+    "google": "Google",
+    "youtube": "YouTube",
+    "amazon": "Amazon",
+    "flipkart": "Flipkart",
+    "github": "GitHub",
+    "reddit": "Reddit",
+    "twitter": "X (Twitter)",
+    "x": "X",
+    "linkedin": "LinkedIn",
+    "netflix": "Netflix",
+    "spotify": "Spotify",
+    "myntra": "Myntra",
+    "meesho": "Meesho",
+    "wikipedia": "Wikipedia",
+    "mail.google.com": "Gmail",
+    "docs.google.com": "Google Docs",
+    "chatgpt": "ChatGPT",
+    "openai": "OpenAI",
+    "stackoverflow": "Stack Overflow",
+    "apple": "Apple",
+    "instagram": "Instagram",
+    "facebook": "Facebook",
+    "discord": "Discord",
+    "whatsapp": "WhatsApp Web",
+    "claude": "Claude",
+}
+
+
+def get_website_display_name(site: Optional[str] = None, url: Optional[str] = None) -> str:
+    """Extract a clean, human-friendly website name from a site key or URL."""
+    if site and site.strip():
+        clean_site = site.strip().lower()
+        if clean_site in KNOWN_SITE_NAMES:
+            return KNOWN_SITE_NAMES[clean_site]
+        return clean_site.capitalize()
+
+    if url and url.strip():
+        raw_url = url.strip()
+        if not raw_url.startswith(("http://", "https://")):
+            raw_url = f"https://{raw_url}"
+        try:
+            import re
+            parsed = urllib.parse.urlparse(raw_url)
+            host = (parsed.netloc or parsed.path).lower()
+            host = re.sub(r"^www\.", "", host).split(":")[0]
+            if host in KNOWN_SITE_NAMES:
+                return KNOWN_SITE_NAMES[host]
+
+            parts = host.split(".")
+            # Handle multi-part TLDs like .co.in, .co.uk, .com.au
+            if len(parts) >= 3 and parts[-2] in ("co", "com", "org", "gov", "net"):
+                root = parts[-3]
+            elif len(parts) >= 2:
+                root = parts[-2]
+            else:
+                root = parts[0]
+
+            if root in KNOWN_SITE_NAMES:
+                return KNOWN_SITE_NAMES[root]
+            return root.capitalize()
+        except Exception:
+            pass
+
+    return "the website"
+
+
 def web_search(
     query: str,
     site: str = "google",
@@ -96,8 +163,11 @@ def web_search(
     try:
         res = subprocess.run(cmd, capture_output=True, text=True, check=False)
         if res.returncode == 0:
-            display_site = site_name.capitalize()
-            return True, f"Searching {display_site} for '{query}'."
+            display_site = get_website_display_name(site=site_name)
+            resolved_b = resolve_browser(browser)
+            if browser and resolved_b:
+                return True, f"Opening {display_site} in {resolved_b} to search for '{query}'."
+            return True, f"Opening {display_site} to search for '{query}'."
         return False, f"Failed to open browser: {res.stderr.strip() or 'Unknown error'}"
     except Exception as e:
         return False, f"Failed to perform web search: {str(e)}"
@@ -131,7 +201,11 @@ def open_url(
     try:
         res = subprocess.run(cmd, capture_output=True, text=True, check=False)
         if res.returncode == 0:
-            return True, f"Opened {target_url}."
+            display_name = get_website_display_name(site=site, url=target_url)
+            resolved_b = resolve_browser(browser)
+            if browser and resolved_b:
+                return True, f"Opening {display_name} in {resolved_b}."
+            return True, f"Opening {display_name}."
         return False, f"Failed to open URL: {res.stderr.strip() or 'Unknown error'}"
     except Exception as e:
         return False, f"Failed to open URL: {str(e)}"

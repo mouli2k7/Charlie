@@ -78,10 +78,21 @@ def test_open_url_adds_https(mock_run):
 
     success, msg = open_url(url="github.com")
     assert success is True
-    assert "https://github.com" in msg
+    assert "GitHub" in msg
     mock_run.assert_called_once_with(
         ["open", "https://github.com"],
         capture_output=True,
         text=True,
         check=False,
     )
+
+
+def test_get_website_display_name():
+    from charlie.actions.web import get_website_display_name
+
+    assert get_website_display_name(site="youtube") == "YouTube"
+    assert get_website_display_name(site="amazon") == "Amazon"
+    assert get_website_display_name(url="github.com") == "GitHub"
+    assert get_website_display_name(url="https://www.reddit.com/r/python") == "Reddit"
+    assert get_website_display_name(url="https://netflix.com") == "Netflix"
+    assert get_website_display_name(url="https://mail.google.com") == "Gmail"
