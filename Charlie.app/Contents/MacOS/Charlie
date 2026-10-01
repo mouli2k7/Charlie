@@ -43,5 +43,5 @@ LOG_DIR="$HOME/Library/Logs"
 mkdir -p "$LOG_DIR"
 LOG_FILE="$LOG_DIR/Charlie.log"
 
-# Run Charlie menu bar application
-exec "$WORK_DIR/.venv/bin/python" -m charlie.main --app >> "$LOG_FILE" 2>&1
+# Run Charlie desktop application
+exec "$WORK_DIR/.venv/bin/python" -u -m charlie.main --app >> "$LOG_FILE" 2>&1

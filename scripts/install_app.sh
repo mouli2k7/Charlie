@@ -22,6 +22,12 @@ fi
 # Ensure executable permissions on launcher
 chmod +x "$APP_SOURCE/Contents/MacOS/Charlie"
 
+# Remove any previous installation in /Applications
+if [ -d "$TARGET_APP" ]; then
+    echo "Removing previous Charlie.app from $TARGET_DIR..."
+    rm -rf "$TARGET_APP"
+fi
+
 # Copy Charlie.app into /Applications
 echo "Copying Charlie.app to $TARGET_DIR..."
 cp -R "$APP_SOURCE" "$TARGET_DIR/"
