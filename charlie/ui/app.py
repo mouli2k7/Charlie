@@ -1,11 +1,11 @@
 """Native macOS Desktop GUI Application for Charlie (Phase 4).
 
-Provides a modern, sleek, and responsive macOS window interface with:
-- Live conversation stream and activity cards
-- Interactive text command prompt
-- Push-to-talk voice recording button
-- Real-time status indicators (Listening, Thinking, Ready)
-- Quick setting toggles (Wake Word, Spoken Voice, Voice selection, Launch at Login)
+Provides a modern, sleek, and curved macOS window interface with:
+- Curved pill status badges and responsive activity indicators
+- Rounded input capsule with electric cyan focus border
+- Modern high-contrast rounded pill buttons (Send, Speak, Voice, Clear)
+- Native macOS popup voice selector with high-contrast readable options
+- Live conversation stream with spacious modern chat bubbles
 - Integrated macOS Menu Bar icon and Dock presence
 """
 
@@ -20,7 +20,6 @@ import sys
 import threading
 import time
 import tkinter as tk
-from tkinter import messagebox, ttk
 from typing import Optional
 
 from charlie import __version__
@@ -40,22 +39,287 @@ from charlie.ui.launch_agent import (
 
 logger = logging.getLogger(__name__)
 
-# Dark mode color palette
-BG_DARK = "#121316"
-BG_CARD = "#1a1c23"
-BG_INPUT = "#22252e"
-BORDER_COLOR = "#2d313d"
+# Premium Dark Apple Color Palette
+BG_DARK = "#0d0f15"         # Deep rich midnight background
+BG_CARD = "#151822"         # Elevated surface for conversation
+BG_INPUT = "#1a1e2a"        # Soft capsule background
+BORDER_SUBTLE = "#262b3a"   # Subtle divider lines
+BORDER_FOCUS = "#00e5ff"    # Vibrant electric cyan accent
 ACCENT_CYAN = "#00e5ff"
 ACCENT_PURPLE = "#a855f7"
 TEXT_PRIMARY = "#f8fafc"
 TEXT_SECONDARY = "#94a3b8"
 TEXT_MUTED = "#64748b"
-STATUS_GREEN_BG = "#0f2d1e"
-STATUS_GREEN_TXT = "#4ade80"
-STATUS_RED_BG = "#3b1114"
-STATUS_RED_TXT = "#f87171"
-STATUS_BLUE_BG = "#0c2b45"
-STATUS_BLUE_TXT = "#38bdf8"
+
+
+class RoundedButton(tk.Canvas):
+    """Custom high-contrast curved pill button with smooth hover and click states."""
+
+    def __init__(
+        self,
+        parent,
+        text: str,
+        command=None,
+        radius: int = 14,
+        bg_color: str = "#2563eb",
+        hover_color: str = "#3b82f6",
+        active_color: Optional[str] = None,
+        fg_color: str = "#ffffff",
+        border_color: Optional[str] = None,
+        border_width: int = 1,
+        padx: int = 16,
+        pady: int = 7,
+        font=("Helvetica", 12, "bold"),
+        **kwargs,
+    ) -> None:
+        super().__init__(parent, highlightthickness=0, bg=parent["bg"], **kwargs)
+        self.text = text
+        self.command = command
+        self.radius = radius
+        self.bg_color = bg_color
+        self.hover_color = hover_color
+        self.active_color = active_color or hover_color
+        self.fg_color = fg_color
+        self.border_color = border_color or bg_color
+        self.border_width = border_width
+        self.btn_font = font
+        self.padx = padx
+        self.pady = pady
+        self.is_hovered = False
+
+        self._recompute_size()
+        self._draw(self.bg_color)
+
+        self.bind("<Enter>", self._on_enter)
+        self.bind("<Leave>", self._on_leave)
+        self.bind("<ButtonPress-1>", self._on_press)
+        self.bind("<ButtonRelease-1>", self._on_release)
+        self.config(cursor="pointinghand")
+
+    def _recompute_size(self) -> None:
+        dummy = tk.Label(self.master, text=self.text, font=self.btn_font)
+        w = dummy.winfo_reqwidth() + self.padx * 2
+        h = dummy.winfo_reqheight() + self.pady * 2
+        dummy.destroy()
+        self.config(width=w, height=h)
+
+    def _draw_rounded_rect(self, x1, y1, x2, y2, r, fill, outline):
+        self.delete("all")
+        # 4 corner arcs
+        self.create_arc(x1, y1, x1 + 2 * r, y1 + 2 * r, start=90, extent=90, fill=fill, outline=outline, width=self.border_width)
+        self.create_arc(x2 - 2 * r, y1, x2, y1 + 2 * r, start=0, extent=90, fill=fill, outline=outline, width=self.border_width)
+        self.create_arc(x2 - 2 * r, y2 - 2 * r, x2, y2, start=270, extent=90, fill=fill, outline=outline, width=self.border_width)
+        self.create_arc(x1, y2 - 2 * r, x1 + 2 * r, y2, start=180, extent=90, fill=fill, outline=outline, width=self.border_width)
+        # Inner rectangles
+        self.create_rectangle(x1 + r, y1, x2 - r, y2, fill=fill, outline=fill)
+        self.create_rectangle(x1, y1 + r, x2, y2 - r, fill=fill, outline=fill)
+        # Border connector lines
+        if outline != fill and self.border_width > 0:
+            self.create_line(x1 + r, y1, x2 - r, y1, fill=outline, width=self.border_width)
+            self.create_line(x1 + r, y2, x2 - r, y2, fill=outline, width=self.border_width)
+            self.create_line(x1, y1 + r, x1, y2 - r, fill=outline, width=self.border_width)
+            self.create_line(x2, y1 + r, x2, y2 - r, fill=outline, width=self.border_width)
+
+    def _draw(self, current_bg: str) -> None:
+        try:
+            w = int(self["width"])
+            h = int(self["height"])
+        except Exception:
+            return
+        r = min(self.radius, h // 2, w // 2)
+        pad = self.border_width
+        outline = self.border_color if self.border_color else current_bg
+        self._draw_rounded_rect(pad, pad, w - pad, h - pad, r, current_bg, outline)
+        self.create_text(w / 2, h / 2, text=self.text, fill=self.fg_color, font=self.btn_font)
+
+    def _on_enter(self, event) -> None:
+        self.is_hovered = True
+        self._draw(self.hover_color)
+
+    def _on_leave(self, event) -> None:
+        self.is_hovered = False
+        self._draw(self.bg_color)
+
+    def _on_press(self, event) -> None:
+        self._draw(self.active_color)
+
+    def _on_release(self, event) -> None:
+        self._draw(self.hover_color if self.is_hovered else self.bg_color)
+        if self.is_hovered and self.command:
+            self.command()
+
+    def set_text_and_colors(
+        self,
+        text: Optional[str] = None,
+        bg: Optional[str] = None,
+        hover: Optional[str] = None,
+        fg: Optional[str] = None,
+        border: Optional[str] = None,
+    ) -> None:
+        """Update button label and color theme dynamically."""
+        if text is not None:
+            self.text = text
+        if bg is not None:
+            self.bg_color = bg
+        if hover is not None:
+            self.hover_color = hover
+        if fg is not None:
+            self.fg_color = fg
+        if border is not None:
+            self.border_color = border
+
+        self._recompute_size()
+        self._draw(self.hover_color if self.is_hovered else self.bg_color)
+
+
+class RoundedPillBadge(tk.Canvas):
+    """Sleek curved pill status indicator in the app header."""
+
+    def __init__(
+        self,
+        parent,
+        text: str = "● Initializing...",
+        state: str = "green",
+        radius: int = 13,
+        **kwargs,
+    ) -> None:
+        super().__init__(parent, highlightthickness=0, bg=parent["bg"], **kwargs)
+        self.text = text
+        self.state = state
+        self.radius = radius
+        self.font = ("Helvetica", 11, "bold")
+        self._resize_and_draw()
+
+    def _get_colors(self, state: str):
+        palette = {
+            "green": ("#34d399", "#063b27", "#0f766e"),   # Emerald on dark forest
+            "red": ("#fca5a5", "#450a0a", "#b91c1c"),     # Light red on dark crimson
+            "blue": ("#38bdf8", "#082f49", "#0284c7"),    # Sky blue on dark cyan
+            "muted": ("#94a3b8", "#1e2230", "#334155"),   # Slate on dark graphite
+        }
+        return palette.get(state, palette["green"])
+
+    def _resize_and_draw(self) -> None:
+        fg, bg, border = self._get_colors(self.state)
+        dummy = tk.Label(self.master, text=self.text, font=self.font)
+        w = dummy.winfo_reqwidth() + 24
+        h = dummy.winfo_reqheight() + 10
+        dummy.destroy()
+
+        self.config(width=w, height=h)
+        self.delete("all")
+        r = min(self.radius, h // 2 - 1)
+
+        # 4 arcs
+        self.create_arc(1, 1, 1 + 2 * r, 1 + 2 * r, start=90, extent=90, fill=bg, outline=border)
+        self.create_arc(w - 1 - 2 * r, 1, w - 1, 1 + 2 * r, start=0, extent=90, fill=bg, outline=border)
+        self.create_arc(w - 1 - 2 * r, h - 1 - 2 * r, w - 1, h - 1, start=270, extent=90, fill=bg, outline=border)
+        self.create_arc(1, h - 1 - 2 * r, 1 + 2 * r, h - 1, start=180, extent=90, fill=bg, outline=border)
+        # Rectangles
+        self.create_rectangle(1 + r, 1, w - 1 - r, h - 1, fill=bg, outline=bg)
+        self.create_rectangle(1, 1 + r, w - 1, h - 1 - r, fill=bg, outline=bg)
+        # Connectors
+        self.create_line(1 + r, 1, w - 1 - r, 1, fill=border)
+        self.create_line(1 + r, h - 1, w - 1 - r, h - 1, fill=border)
+        self.create_line(1, 1 + r, 1, h - 1 - r, fill=border)
+        self.create_line(w - 1, 1 + r, w - 1, h - 1 - r, fill=border)
+
+        self.create_text(w / 2, h / 2, text=self.text, fill=fg, font=self.font)
+
+    def set_status(self, text: str, state: str = "green") -> None:
+        self.text = text
+        self.state = state
+        self._resize_and_draw()
+
+
+class RoundedInputCapsule(tk.Frame):
+    """Modern curved pill container for text input with focus glow."""
+
+    def __init__(
+        self,
+        parent,
+        on_submit,
+        bg_color: str = "#1a1e2a",
+        border_color: str = "#2e3547",
+        focus_border: str = "#00e5ff",
+        radius: int = 16,
+        **kwargs,
+    ) -> None:
+        super().__init__(parent, bg=parent["bg"], **kwargs)
+        self.on_submit = on_submit
+        self.bg_color = bg_color
+        self.border_color = border_color
+        self.focus_border = focus_border
+        self.radius = radius
+        self.is_focused = False
+
+        self.canvas = tk.Canvas(self, bg=parent["bg"], highlightthickness=0, height=42)
+        self.canvas.pack(fill=tk.BOTH, expand=True)
+
+        self.entry = tk.Entry(
+            self.canvas,
+            bg=bg_color,
+            fg="#f8fafc",
+            insertbackground="#00e5ff",
+            font=("Helvetica", 13),
+            relief=tk.FLAT,
+            bd=0,
+        )
+        self.window_id = self.canvas.create_window(18, 21, window=self.entry, anchor="w")
+
+        self.canvas.bind("<Configure>", self._on_resize)
+        self.entry.bind("<FocusIn>", self._on_focus_in)
+        self.entry.bind("<FocusOut>", self._on_focus_out)
+        self.entry.bind("<Return>", lambda e: self.on_submit())
+
+    def _draw(self) -> None:
+        w = self.canvas.winfo_width()
+        h = self.canvas.winfo_height()
+        if w < 20 or h < 20:
+            return
+        self.canvas.delete("capsule_shape")
+        r = min(self.radius, h // 2 - 2)
+        border = self.focus_border if self.is_focused else self.border_color
+        b_width = 2 if self.is_focused else 1
+
+        # 4 arcs
+        self.canvas.create_arc(2, 2, 2 + 2 * r, 2 + 2 * r, start=90, extent=90, fill=self.bg_color, outline=border, width=b_width, tags="capsule_shape")
+        self.canvas.create_arc(w - 2 - 2 * r, 2, w - 2, 2 + 2 * r, start=0, extent=90, fill=self.bg_color, outline=border, width=b_width, tags="capsule_shape")
+        self.canvas.create_arc(w - 2 - 2 * r, h - 2 - 2 * r, w - 2, h - 2, start=270, extent=90, fill=self.bg_color, outline=border, width=b_width, tags="capsule_shape")
+        self.canvas.create_arc(2, h - 2 - 2 * r, 2 + 2 * r, h - 2, start=180, extent=90, fill=self.bg_color, outline=border, width=b_width, tags="capsule_shape")
+        # Rectangles
+        self.canvas.create_rectangle(2 + r, 2, w - 2 - r, h - 2, fill=self.bg_color, outline=self.bg_color, tags="capsule_shape")
+        self.canvas.create_rectangle(2, 2 + r, w - 2, h - 2 - r, fill=self.bg_color, outline=self.bg_color, tags="capsule_shape")
+        # Connectors
+        self.canvas.create_line(2 + r, 2, w - 2 - r, 2, fill=border, width=b_width, tags="capsule_shape")
+        self.canvas.create_line(2 + r, h - 2, w - 2 - r, h - 2, fill=border, width=b_width, tags="capsule_shape")
+        self.canvas.create_line(2, 2 + r, 2, h - 2 - r, fill=border, width=b_width, tags="capsule_shape")
+        self.canvas.create_line(w - 2, 2 + r, w - 2, h - 2 - r, fill=border, width=b_width, tags="capsule_shape")
+
+        self.canvas.tag_lower("capsule_shape")
+        self.canvas.coords(self.window_id, r + 6, h // 2)
+        entry_w = max(10, (w - 2 * r - 24) // 8)
+        self.entry.config(width=entry_w)
+
+    def _on_resize(self, event) -> None:
+        self._draw()
+
+    def _on_focus_in(self, event) -> None:
+        self.is_focused = True
+        self._draw()
+
+    def _on_focus_out(self, event) -> None:
+        self.is_focused = False
+        self._draw()
+
+    def get(self) -> str:
+        return self.entry.get()
+
+    def delete(self, first, last=None) -> None:
+        self.entry.delete(first, last)
+
+    def focus_set(self) -> None:
+        self.entry.focus_set()
 
 
 class CharlieAppWindow:
@@ -70,15 +334,14 @@ class CharlieAppWindow:
 
         # Window setup
         self.root.title("Charlie")
-        self.root.geometry("700x600")
-        self.root.minsize(580, 500)
+        self.root.geometry("720x620")
+        self.root.minsize(600, 520)
         self.root.configure(bg=BG_DARK)
 
         # Center on screen
-        self._center_window(700, 600)
+        self._center_window(720, 620)
 
-        # Setup custom styles and build UI
-        self._setup_styles()
+        # Build UI components
         self._build_header()
         self._build_chat_view()
         self._build_input_bar()
@@ -147,23 +410,8 @@ class CharlieAppWindow:
         y = max(0, (screen_h - height) // 2 - 40)
         self.root.geometry(f"{width}x{height}+{x}+{y}")
 
-    def _setup_styles(self) -> None:
-        style = ttk.Style(self.root)
-        try:
-            style.theme_use("clam")
-        except Exception:
-            pass
-        style.configure(
-            "TCombobox",
-            fieldbackground=BG_INPUT,
-            background=BG_CARD,
-            foreground=TEXT_PRIMARY,
-            darkcolor=BORDER_COLOR,
-            lightcolor=BORDER_COLOR,
-        )
-
     def _build_header(self) -> None:
-        header_frame = tk.Frame(self.root, bg=BG_DARK, padx=20, pady=16)
+        header_frame = tk.Frame(self.root, bg=BG_DARK, padx=22, pady=16)
         header_frame.pack(fill=tk.X)
 
         title_box = tk.Frame(header_frame, bg=BG_DARK)
@@ -172,7 +420,7 @@ class CharlieAppWindow:
         app_title = tk.Label(
             title_box,
             text="⚡ CHARLIE",
-            font=("Helvetica", 18, "bold"),
+            font=("Helvetica", 19, "bold"),
             fg=ACCENT_CYAN,
             bg=BG_DARK,
         )
@@ -187,30 +435,26 @@ class CharlieAppWindow:
         )
         version_label.pack(anchor="w")
 
-        # Status badge (pill)
-        self.status_badge = tk.Label(
+        # Curved Status Badge
+        self.status_badge = RoundedPillBadge(
             header_frame,
             text="● Initializing...",
-            font=("Helvetica", 11, "bold"),
-            fg=STATUS_GREEN_TXT,
-            bg=STATUS_GREEN_BG,
-            padx=12,
-            pady=4,
-            relief=tk.FLAT,
+            state="green",
+            radius=13,
         )
-        self.status_badge.pack(side=tk.RIGHT, pady=6)
+        self.status_badge.pack(side=tk.RIGHT, pady=4)
 
     def _build_chat_view(self) -> None:
-        # Container frame with border
+        # Container frame with curved aesthetic
         container = tk.Frame(
             self.root,
             bg=BG_CARD,
-            highlightbackground=BORDER_COLOR,
+            highlightbackground="#232736",
             highlightthickness=1,
-            padx=14,
+            padx=12,
             pady=12,
         )
-        container.pack(fill=tk.BOTH, expand=True, padx=20, pady=(0, 12))
+        container.pack(fill=tk.BOTH, expand=True, padx=22, pady=(0, 12))
 
         # Text display area
         self.chat_text = tk.Text(
@@ -218,12 +462,13 @@ class CharlieAppWindow:
             bg=BG_CARD,
             fg=TEXT_PRIMARY,
             insertbackground=ACCENT_CYAN,
-            selectbackground="#2e384d",
-            selectforeground=TEXT_PRIMARY,
+            selectbackground="#2563eb",
+            selectforeground="#ffffff",
             font=("Helvetica", 13),
             wrap=tk.WORD,
             relief=tk.FLAT,
-            padx=10,
+            bd=0,
+            padx=12,
             pady=10,
             state=tk.DISABLED,
         )
@@ -233,12 +478,52 @@ class CharlieAppWindow:
         scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
         self.chat_text.config(yscrollcommand=scrollbar.set)
 
-        # Text styles
-        self.chat_text.tag_config("user_label", foreground=ACCENT_CYAN, font=("Helvetica", 11, "bold"))
-        self.chat_text.tag_config("user_text", foreground=TEXT_PRIMARY, font=("Helvetica", 13))
-        self.chat_text.tag_config("bot_label", foreground=ACCENT_PURPLE, font=("Helvetica", 11, "bold"))
-        self.chat_text.tag_config("bot_text", foreground=TEXT_PRIMARY, font=("Helvetica", 13))
-        self.chat_text.tag_config("system_text", foreground=TEXT_MUTED, font=("Helvetica", 11, "italic"))
+        # Bubble-like typography with comfortable padding
+        self.chat_text.tag_config(
+            "user_label",
+            foreground=ACCENT_CYAN,
+            font=("Helvetica", 11, "bold"),
+            lmargin1=14,
+            lmargin2=14,
+            spacing1=6,
+            spacing3=2,
+        )
+        self.chat_text.tag_config(
+            "user_text",
+            foreground="#ffffff",
+            font=("Helvetica", 13),
+            lmargin1=14,
+            lmargin2=14,
+            spacing1=2,
+            spacing3=8,
+        )
+        self.chat_text.tag_config(
+            "bot_label",
+            foreground="#c084fc",
+            font=("Helvetica", 11, "bold"),
+            lmargin1=14,
+            lmargin2=14,
+            spacing1=6,
+            spacing3=2,
+        )
+        self.chat_text.tag_config(
+            "bot_text",
+            foreground="#f1f5f9",
+            font=("Helvetica", 13),
+            lmargin1=14,
+            lmargin2=14,
+            spacing1=2,
+            spacing3=8,
+        )
+        self.chat_text.tag_config(
+            "system_text",
+            foreground="#94a3b8",
+            font=("Helvetica", 11, "italic"),
+            lmargin1=14,
+            lmargin2=14,
+            spacing1=4,
+            spacing3=8,
+        )
 
         # Welcome message
         self._append_system_message(
@@ -248,68 +533,56 @@ class CharlieAppWindow:
         )
 
     def _build_input_bar(self) -> None:
-        bar_frame = tk.Frame(self.root, bg=BG_DARK, padx=20)
+        bar_frame = tk.Frame(self.root, bg=BG_DARK, padx=22)
         bar_frame.pack(fill=tk.X, pady=(0, 10))
 
-        # Entry container with rounded appearance
-        entry_container = tk.Frame(
+        # Curved input capsule
+        self.input_capsule = RoundedInputCapsule(
             bar_frame,
-            bg=BG_INPUT,
-            highlightbackground=BORDER_COLOR,
-            highlightthickness=1,
-            padx=10,
-            pady=6,
+            on_submit=self.on_send_command,
+            bg_color=BG_INPUT,
+            border_color="#2e3547",
+            focus_border="#00e5ff",
+            radius=16,
         )
-        entry_container.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 10))
-
-        self.cmd_entry = tk.Entry(
-            entry_container,
-            bg=BG_INPUT,
-            fg=TEXT_PRIMARY,
-            insertbackground=ACCENT_CYAN,
-            font=("Helvetica", 13),
-            relief=tk.FLAT,
-        )
-        self.cmd_entry.pack(fill=tk.X, expand=True)
-        self.cmd_entry.bind("<Return>", lambda e: self.on_send_command())
+        self.input_capsule.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 10))
+        self.cmd_entry = self.input_capsule.entry
         self.cmd_entry.focus_set()
 
-        # Send Button
-        send_btn = tk.Button(
+        # Curved Send Button (Electric Blue pill with bold white text)
+        self.send_btn = RoundedButton(
             bar_frame,
-            text="Send",
-            font=("Helvetica", 12, "bold"),
-            bg="#2563eb",
-            fg="#ffffff",
-            activebackground="#1d4ed8",
-            activeforeground="#ffffff",
-            relief=tk.FLAT,
-            padx=16,
-            pady=7,
-            cursor="pointinghand",
+            text="Send ➔",
             command=self.on_send_command,
+            radius=15,
+            bg_color="#2563eb",
+            hover_color="#3b82f6",
+            fg_color="#ffffff",
+            border_color="#3b82f6",
+            padx=18,
+            pady=8,
+            font=("Helvetica", 12, "bold"),
         )
-        send_btn.pack(side=tk.LEFT, padx=(0, 8))
+        self.send_btn.pack(side=tk.LEFT, padx=(0, 8))
 
-        # Push-to-Talk Mic Button
-        self.mic_btn = tk.Button(
+        # Curved Push-to-Talk Mic Button (Dark slate pill with cyan border)
+        self.mic_btn = RoundedButton(
             bar_frame,
             text="🎙️ Speak",
-            font=("Helvetica", 12, "bold"),
-            bg="#374151",
-            fg="#ffffff",
-            activebackground="#4b5563",
-            activeforeground="#ffffff",
-            relief=tk.FLAT,
-            padx=14,
-            pady=7,
-            cursor="pointinghand",
             command=self.on_mic_button,
+            radius=15,
+            bg_color="#1e293b",
+            hover_color="#334155",
+            fg_color="#f8fafc",
+            border_color="#38bdf8",
+            padx=16,
+            pady=8,
+            font=("Helvetica", 12, "bold"),
         )
         self.mic_btn.pack(side=tk.LEFT)
 
     def _build_controls(self) -> None:
-        ctrl_frame = tk.Frame(self.root, bg=BG_DARK, padx=20, pady=8)
+        ctrl_frame = tk.Frame(self.root, bg=BG_DARK, padx=22, pady=10)
         ctrl_frame.pack(fill=tk.X, side=tk.BOTTOM)
 
         # Wake Word Toggle Checkbox
@@ -319,12 +592,13 @@ class CharlieAppWindow:
             text="⚡ 'Hey Charlie' Wake Word",
             variable=self.wake_var,
             font=("Helvetica", 11),
-            fg=TEXT_PRIMARY,
+            fg="#e2e8f0",
             bg=BG_DARK,
-            selectcolor=BG_CARD,
+            selectcolor="#2563eb",
             activebackground=BG_DARK,
-            activeforeground=TEXT_PRIMARY,
+            activeforeground="#38bdf8",
             command=self.on_toggle_wake_word,
+            cursor="pointinghand",
         )
         self.wake_cb.pack(side=tk.LEFT, padx=(0, 14))
 
@@ -335,12 +609,13 @@ class CharlieAppWindow:
             text="🔊 Spoken Responses",
             variable=self.speech_var,
             font=("Helvetica", 11),
-            fg=TEXT_PRIMARY,
+            fg="#e2e8f0",
             bg=BG_DARK,
-            selectcolor=BG_CARD,
+            selectcolor="#2563eb",
             activebackground=BG_DARK,
-            activeforeground=TEXT_PRIMARY,
+            activeforeground="#38bdf8",
             command=self.on_toggle_speech,
+            cursor="pointinghand",
         )
         self.speech_cb.pack(side=tk.LEFT, padx=(0, 14))
 
@@ -351,50 +626,87 @@ class CharlieAppWindow:
             text="🚀 Launch at Login",
             variable=self.login_var,
             font=("Helvetica", 11),
-            fg=TEXT_PRIMARY,
+            fg="#e2e8f0",
             bg=BG_DARK,
-            selectcolor=BG_CARD,
+            selectcolor="#2563eb",
             activebackground=BG_DARK,
-            activeforeground=TEXT_PRIMARY,
+            activeforeground="#38bdf8",
             command=self.on_toggle_login,
+            cursor="pointinghand",
         )
         self.login_cb.pack(side=tk.LEFT, padx=(0, 14))
 
-        # Voice Selector Combobox
-        voice_label = tk.Label(
+        # Voice Selector Curved Button with Native macOS Popup Menu
+        curr_voice = self.cfg.voice_name or "Samantha"
+        self.voice_var = tk.StringVar(value=curr_voice)
+        self.voice_btn = RoundedButton(
             ctrl_frame,
-            text="Voice:",
-            font=("Helvetica", 11),
-            fg=TEXT_MUTED,
-            bg=BG_DARK,
+            text=f"🗣️ Voice: {curr_voice} ▾",
+            command=self.on_open_voice_menu,
+            radius=13,
+            bg_color="#1e2430",
+            hover_color="#2b3242",
+            fg_color="#38bdf8",
+            border_color="#3b4252",
+            padx=12,
+            pady=5,
+            font=("Helvetica", 11, "bold"),
         )
-        voice_label.pack(side=tk.LEFT, padx=(10, 4))
+        self.voice_btn.pack(side=tk.LEFT, padx=(6, 0))
 
-        self.voice_var = tk.StringVar(value=self.cfg.voice_name or "Samantha")
-        voices = ["Samantha", "Daniel", "Karen", "Rishi", "Tara", "Alex"]
-        self.voice_combo = ttk.Combobox(
-            ctrl_frame,
-            textvariable=self.voice_var,
-            values=voices,
-            state="readonly",
-            width=10,
-        )
-        self.voice_combo.pack(side=tk.LEFT)
-        self.voice_combo.bind("<<ComboboxSelected>>", self.on_voice_selected)
-
-        # Clear button
-        clear_btn = tk.Button(
+        # Clear Button
+        self.clear_btn = RoundedButton(
             ctrl_frame,
             text="🧹 Clear",
-            font=("Helvetica", 10),
-            bg=BG_DARK,
-            fg=TEXT_MUTED,
-            activebackground=BG_DARK,
-            activeforeground=TEXT_PRIMARY,
-            relief=tk.FLAT,
             command=self.on_clear_chat,
+            radius=13,
+            bg_color="#1e2430",
+            hover_color="#2b3242",
+            fg_color="#94a3b8",
+            border_color="#3b4252",
+            padx=12,
+            pady=5,
+            font=("Helvetica", 11),
         )
-        clear_btn.pack(side=tk.RIGHT)
+        self.clear_btn.pack(side=tk.RIGHT)
+
+    def on_open_voice_menu(self) -> None:
+        """Open native macOS popup menu with available voices."""
+        menu = tk.Menu(self.root, tearoff=0)
+        voices = [
+            ("Samantha", "Samantha (US Female, Siri-like)"),
+            ("Daniel", "Daniel (UK Male, Jarvis-like)"),
+            ("Karen", "Karen (Australian Female)"),
+            ("Rishi", "Rishi (Indian English Male)"),
+            ("Tara", "Tara (Indian English Female)"),
+            ("Alex", "Alex (Classic macOS Male)"),
+        ]
+        for v_id, label in voices:
+            menu.add_radiobutton(
+                label=label,
+                value=v_id,
+                variable=self.voice_var,
+                command=lambda v=v_id: self.select_voice(v),
+            )
+        # Position menu directly below the voice button
+        x = self.voice_btn.winfo_rootx()
+        y = self.voice_btn.winfo_rooty() + self.voice_btn.winfo_height() + 2
+        menu.tk_popup(x, y)
+
+    def select_voice(self, voice_name: str) -> None:
+        """Select active voice, update button, and play preview."""
+        self.voice_var.set(voice_name)
+        self.cfg.voice_name = voice_name
+        save_setting("voice_name", voice_name)
+        self.voice_btn.set_text_and_colors(text=f"🗣️ Voice: {voice_name} ▾")
+        output_response(
+            f"Hello, my voice is now set to {voice_name}.",
+            speak_it=self.speech_var.get(),
+            voice=voice_name,
+        )
+
+    def on_voice_selected(self, event=None) -> None:
+        self.select_voice(self.voice_var.get())
 
     def _setup_status_bar_menu(self) -> None:
         """Create native macOS menu bar status item using PyObjC AppKit."""
@@ -512,7 +824,6 @@ class CharlieAppWindow:
         """Hide window to background instead of terminating listener."""
         self.root.withdraw()
         try:
-            # Show a native macOS banner confirming background operation
             subprocess.Popen([
                 "osascript", "-e",
                 'display notification "Charlie is active in the background. Click the ⚡ menu bar icon or Dock icon to reopen." with title "Charlie"'
@@ -542,14 +853,7 @@ class CharlieAppWindow:
         sys.exit(0)
 
     def _set_status(self, text: str, state: str = "green") -> None:
-        colors = {
-            "green": (STATUS_GREEN_TXT, STATUS_GREEN_BG),
-            "red": (STATUS_RED_TXT, STATUS_RED_BG),
-            "blue": (STATUS_BLUE_TXT, STATUS_BLUE_BG),
-            "muted": (TEXT_MUTED, BG_CARD),
-        }
-        fg, bg = colors.get(state, (STATUS_GREEN_TXT, STATUS_GREEN_BG))
-        self.status_badge.config(text=text, fg=fg, bg=bg)
+        self.status_badge.set_status(text, state)
 
     def _append_user_message(self, text: str) -> None:
         self.chat_text.config(state=tk.NORMAL)
@@ -588,8 +892,23 @@ class CharlieAppWindow:
                     text, state = payload
                     self._set_status(text, state)
                 elif msg_type == "mic_btn":
-                    text, bg = payload
-                    self.mic_btn.config(text=text, bg=bg)
+                    state, _ = payload
+                    if state == "listening":
+                        self.mic_btn.set_text_and_colors(
+                            text="🔴 Listening...",
+                            bg="#dc2626",
+                            hover="#ef4444",
+                            fg="#ffffff",
+                            border="#f87171",
+                        )
+                    else:
+                        self.mic_btn.set_text_and_colors(
+                            text="🎙️ Speak",
+                            bg="#1e293b",
+                            hover="#334155",
+                            fg="#f8fafc",
+                            border="#38bdf8",
+                        )
                 elif msg_type == "wake_state":
                     self.wake_var.set(payload)
         except queue.Empty:
@@ -620,7 +939,7 @@ class CharlieAppWindow:
 
         self.is_busy = True
         self.msg_queue.put(("status", ("🔴 Listening...", "red")))
-        self.msg_queue.put(("mic_btn", ("🔴 Listening...", "#dc2626")))
+        self.msg_queue.put(("mic_btn", ("listening", None)))
 
         try:
             text = listen_and_transcribe()
@@ -645,7 +964,7 @@ class CharlieAppWindow:
             self.msg_queue.put(("system", f"Error: {err}"))
         finally:
             self.is_busy = False
-            self.msg_queue.put(("mic_btn", ("🎙️ Speak", "#374151")))
+            self.msg_queue.put(("mic_btn", ("normal", None)))
             is_listening = self.wake_var.get()
             status_text = '🟢 Listening for "Hey Charlie"' if is_listening else "● Ready"
             self.msg_queue.put(("status", (status_text, "green" if is_listening else "muted")))
@@ -720,16 +1039,6 @@ class CharlieAppWindow:
     def on_toggle_login(self) -> None:
         new_state = toggle_launch_at_login()
         self.login_var.set(new_state)
-
-    def on_voice_selected(self, event=None) -> None:
-        voice = self.voice_var.get()
-        self.cfg.voice_name = voice
-        save_setting("voice_name", voice)
-        output_response(
-            f"Hello, my voice is now set to {voice}.",
-            speak_it=self.speech_var.get(),
-            voice=voice,
-        )
 
     def on_clear_chat(self) -> None:
         self.chat_text.config(state=tk.NORMAL)
