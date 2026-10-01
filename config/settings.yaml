@@ -10,3 +10,4 @@ voice_name: Tara
 volume_step: 10
 wake_popup_style: both
 wake_word: hey charlie
+wake_word_autostart: true

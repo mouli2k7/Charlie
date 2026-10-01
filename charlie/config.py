@@ -38,6 +38,7 @@ class Config(BaseModel):
     mic_energy_threshold: int = Field(default=150, ge=50, le=4000)
     voice_name: Optional[str] = "Samantha"
     wake_popup_style: str = "both"
+    wake_word_autostart: bool = True
     sites: Dict[str, str] = Field(default_factory=dict)
 
 
@@ -92,6 +93,7 @@ def load_config() -> Config:
         mic_energy_threshold=int(settings_data.get("mic_energy_threshold", 150)),
         voice_name=os.getenv("CHARLIE_VOICE", settings_data.get("voice_name", "Samantha")),
         wake_popup_style=settings_data.get("wake_popup_style", "both"),
+        wake_word_autostart=bool(settings_data.get("wake_word_autostart", True)),
         sites=sites_data,
     )
 

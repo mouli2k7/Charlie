@@ -1,4 +1,47 @@
 #!/bin/bash
-DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )/../../.." && pwd )"
-cd "$DIR"
-exec "$DIR/.venv/bin/python" -m charlie.main --app
+# ==============================================================================
+# Charlie macOS Application Launcher
+# ==============================================================================
+
+# Ensure full environment PATH (Homebrew Apple Silicon, Intel, system)
+export PATH="/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:$PATH"
+
+# Resolve directories
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+APP_DIR="$( cd "$SCRIPT_DIR/../.." && pwd )"
+
+# Candidate project directories where virtualenv and code reside
+CANDIDATE_DIRS=(
+    "$( cd "$APP_DIR/.." && pwd )"
+    "/Users/mouli._.2k7/Documents/Charlie"
+)
+
+WORK_DIR=""
+for dir in "${CANDIDATE_DIRS[@]}"; do
+    if [ -f "$dir/.venv/bin/python" ] && [ -f "$dir/charlie/main.py" ]; then
+        WORK_DIR="$dir"
+        break
+    fi
+done
+
+if [ -z "$WORK_DIR" ]; then
+    osascript -e 'display alert "Charlie Launch Error" message "Could not locate Charlie installation directory or virtual environment.\nPlease ensure Charlie repository is intact." as critical'
+    exit 1
+fi
+
+cd "$WORK_DIR"
+
+# Load environment variables (.env) if present
+if [ -f "$WORK_DIR/.env" ]; then
+    set -a
+    source "$WORK_DIR/.env"
+    set +a
+fi
+
+# Ensure log directory exists
+LOG_DIR="$HOME/Library/Logs"
+mkdir -p "$LOG_DIR"
+LOG_FILE="$LOG_DIR/Charlie.log"
+
+# Run Charlie menu bar application
+exec "$WORK_DIR/.venv/bin/python" -m charlie.main --app >> "$LOG_FILE" 2>&1

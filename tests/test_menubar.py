@@ -19,7 +19,7 @@ class TestMenuBarApp(unittest.TestCase):
         mock_listener.is_running = False
         mock_get_listener.return_value = mock_listener
 
-        self.app = CharlieMenuBarApp()
+        self.app = CharlieMenuBarApp(autostart_wake_word=False)
 
     def test_initial_menu_structure(self) -> None:
         self.assertEqual(self.app.title, "⚡ Charlie")
@@ -141,6 +141,21 @@ class TestMenuBarApp(unittest.TestCase):
         self.app.on_quit()
         mock_stop_listener.assert_called_once()
         mock_quit.assert_called_once()
+
+    @patch("charlie.ui.menubar.start_wake_word_listener")
+    @patch("charlie.ui.menubar.get_wake_word_listener")
+    def test_autostart_wake_word_enabled(
+        self,
+        mock_get_listener: MagicMock,
+        mock_start: MagicMock,
+    ) -> None:
+        mock_listener = MagicMock()
+        mock_listener.is_running = False
+        mock_get_listener.return_value = mock_listener
+
+        app = CharlieMenuBarApp(autostart_wake_word=True)
+        mock_start.assert_called_once()
+        self.assertEqual(app.wake_word_item.state, 1)
 
 
 if __name__ == "__main__":

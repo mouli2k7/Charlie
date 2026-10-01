@@ -8,11 +8,23 @@
     <string>com.mouli.charlie</string>
     <key>CFBundleName</key>
     <string>Charlie</string>
+    <key>CFBundleDisplayName</key>
+    <string>Charlie</string>
+    <key>CFBundleIconFile</key>
+    <string>AppIcon</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>
     <string>0.1.0</string>
+    <key>CFBundleVersion</key>
+    <string>1</string>
     <key>LSUIElement</key>
     <true/>
+    <key>NSMicrophoneUsageDescription</key>
+    <string>Charlie requires microphone access to listen for voice commands and the 'Hey Charlie' wake word.</string>
+    <key>NSSpeechRecognitionUsageDescription</key>
+    <string>Charlie uses speech recognition to interpret your spoken voice commands.</string>
+    <key>NSAppleEventsUsageDescription</key>
+    <string>Charlie uses AppleEvents automation to control system settings, open applications, and manage volume.</string>
 </dict>
 </plist>
