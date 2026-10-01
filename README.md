@@ -1,6 +1,6 @@
 # Charlie — Voice + Text Assistant for macOS
 
-> **Instructions for the AI coding agent (Antigravity):** This README is the full specification for the project. Read it completely before writing code. Build the project phase by phase (see [Build Phases](#build-phases)), run the tests after each phase, and do not skip ahead. Follow the [Rules & Constraints](#rules--constraints) strictly.
+> **Instructions for the AI coding agent:** This README is the full specification for the project. Read it completely before writing code. Build the project phase by phase (see [Build Phases](#build-phases)), run the tests after each phase, and do not skip ahead. Follow the [Rules & Constraints](#rules--constraints) strictly.
 
 ---
 
