@@ -38,7 +38,7 @@ logger = logging.getLogger(__name__)
 class CharlieMenuBarApp(rumps.App):
     """Native macOS menu-bar app for Charlie."""
 
-    def __init__(self) -> None:
+    def __init__(self, autostart_wake_word: Optional[bool] = None) -> None:
         super().__init__(
             name="Charlie",
             title="⚡ Charlie",
@@ -98,9 +98,24 @@ class CharlieMenuBarApp(rumps.App):
             self.voice_menu.add(item)
             self.voice_items[voice_key] = item
 
-        # Initial checkmark states
+        # Initial checkmark states & auto-start wake word if enabled
         listener = get_wake_word_listener()
-        self.wake_word_item.state = 1 if listener.is_running else 0
+        should_autostart = (
+            autostart_wake_word
+            if autostart_wake_word is not None
+            else self.cfg.wake_word_autostart
+        )
+        if should_autostart and not listener.is_running:
+            try:
+                start_wake_word_listener(on_command=self._on_wake_command_heard)
+                self.wake_word_item.state = 1
+                self.status_item.title = "● Status: Listening ('Hey Charlie')"
+            except Exception as e:
+                logger.debug("Wake word autostart error: %s", e)
+                self.wake_word_item.state = 0
+        else:
+            self.wake_word_item.state = 1 if listener.is_running else 0
+
         self.speech_item.state = 1 if self._speech_enabled else 0
         self.login_item.state = 1 if is_launch_at_login_enabled() else 0
 

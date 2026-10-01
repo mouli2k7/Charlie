@@ -41,10 +41,14 @@ def main() -> None:
     parser.add_argument(
         "--app",
         "-a",
+        action="store_true",
+        help="Launch Charlie as a native macOS desktop app with menu bar integration.",
+    )
+    parser.add_argument(
         "--menubar",
         "-m",
         action="store_true",
-        help="Launch Charlie as a native macOS menu bar app (Phase 4).",
+        help="Launch Charlie as a menu-bar-only daemon.",
     )
     parser.add_argument(
         "--list-voices",
@@ -96,8 +100,15 @@ def main() -> None:
         speak(f"Hello, my voice is now set to {voice}.", voice=voice)
         sys.exit(0)
 
-    # Menu bar app mode (Phase 4)
+    # Desktop GUI app mode (Phase 4)
     if args.app:
+        from charlie.ui.app import run_charlie_app
+
+        run_charlie_app()
+        sys.exit(0)
+
+    # Menu bar daemon mode
+    if args.menubar:
         from charlie.ui.menubar import run_menubar_app
 
         run_menubar_app()
